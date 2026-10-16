@@ -117,8 +117,10 @@ their variable list (written `{{<step>.<action>.<key>}}`, for example
 
 ## Privacy
 
-The key and the account number are stored encrypted by Gladys. The key is
-sent only to `api.octopus.energy`,
+The key and the account number are kept by Gladys in its database, never
+shown again, and sent only to Octopus. They are masked in the interface, not
+encrypted: they sit in clear in the Gladys database (and so in its backups).
+The key is sent only to `api.octopus.energy`,
 and only for the account and consumption requests (the tariffs and Agile
 prices are public). Nothing is logged with the key or the account number.
 

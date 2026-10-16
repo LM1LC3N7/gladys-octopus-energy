@@ -57,8 +57,8 @@
         "fr": "Clé d'API"
       },
       "description": {
-        "en": "Starts with sk_live_. Stored encrypted by Gladys and only sent to api.octopus.energy. Leave empty for the public Agile prices only.",
-        "fr": "Commence par sk_live_. Stockée chiffrée par Gladys et envoyée uniquement à api.octopus.energy. Laissez vide pour n'avoir que les prix Agile publics."
+        "en": "Starts with sk_live_. Kept by Gladys in its database, never shown again, only sent to Octopus (api.octopus.energy). Leave empty for the public Agile prices only.",
+        "fr": "Commence par sk_live_. Gardée par Gladys dans sa base, jamais réaffichée, envoyée seulement à Octopus (api.octopus.energy). Laissez vide pour n'avoir que les prix Agile publics."
       }
     },
     {
@@ -70,8 +70,8 @@
         "fr": "Numéro de compte"
       },
       "description": {
-        "en": "Shown on your bills and on the API access page. Stored encrypted by Gladys, like the key.",
-        "fr": "Indiqué sur vos factures et sur la page « API access ». Stocké chiffré par Gladys, comme la clé."
+        "en": "Shown on your bills and on the API access page. Like the key: kept by Gladys in its database, never shown again, only sent to Octopus.",
+        "fr": "Indiqué sur vos factures et sur la page « API access ». Comme la clé : gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à Octopus."
       },
       "placeholder": {
         "en": "e.g. A-1B2C3D4E",

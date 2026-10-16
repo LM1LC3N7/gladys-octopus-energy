@@ -127,8 +127,10 @@ rapport à la période.
 
 ## Confidentialité
 
-La clé et le numéro de compte sont stockés chiffrés par Gladys. La clé est
-envoyée uniquement à
+La clé et le numéro de compte sont gardés par Gladys dans sa base, jamais
+réaffichés, et envoyés seulement à Octopus. Ils sont masqués dans
+l'interface, pas chiffrés : ils sont en clair dans la base de Gladys (donc
+aussi dans ses sauvegardes). La clé est envoyée uniquement à
 `api.octopus.energy`, et seulement pour les requêtes du compte et de la
 consommation (les tarifs et les prix Agile sont publics). Rien n'est
 journalisé avec la clé ou le numéro de compte.

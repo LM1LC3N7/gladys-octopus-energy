@@ -10,6 +10,13 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Configuration and docs: the API key and the account number are kept by
+  Gladys in its database (masked in the interface, not encrypted), never
+  shown again and only sent to Octopus; they no longer claim encrypted
+  storage.
+
 ## [0.1.1] - 2026-10-16
 
 ### Added
