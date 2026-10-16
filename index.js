@@ -15,6 +15,9 @@ const app = new OctopusApp({ gladys });
 
 // --- Discovery -------------------------------------------------------------------
 gladys.onScanRequest(() => app.discover());
+// A meter device just created: its 14-day backfill starts now, not at the next hour.
+gladys.onDeviceCreated((device) => app.onDeviceCreated(device));
+gladys.onDeviceDeleted((device) => app.onDeviceDeleted(device));
 
 // --- Scene actions --------------------------------------------------------------
 gladys.onSceneAction(SCENE_ACTIONS.GET_PRICE, (fields) => app.getPrice(fields));

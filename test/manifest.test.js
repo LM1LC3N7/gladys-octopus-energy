@@ -69,6 +69,7 @@ test('every text is bilingual', () => {
 test('the configuration matches the code', () => {
   const fields = Object.fromEntries(manifest.config_schema.map((f) => [f.key, f]));
   assert.equal(fields.api_key.type, 'secret');
+  assert.equal(fields.account_number.type, 'secret', 'the account number is personal data');
   for (const [key, value] of Object.entries(DEFAULTS)) {
     assert.equal(fields[key].default, value, `${key} default`);
   }

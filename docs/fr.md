@@ -45,17 +45,29 @@ d'électricité.
 Les relevés des compteurs communicants arrivent chez Octopus avec du retard
 (souvent le lendemain). L'intégration publie donc des demi-heures **datées** :
 chaque relevé tombe dans sa propre demi-heure du suivi énergétique, même
-arrivé un jour plus tard. À l'ajout d'un compteur, les 14 derniers jours sont
-remplis ; ensuite les 3 derniers jours sont relus toutes les heures. Le gaz
-relevé en mètres cubes (SMETS2) est converti en kWh avec le pouvoir
-calorifique de la configuration (×1,02264 ÷ 3,6) ; choisissez kWh pour un
-compteur de gaz SMETS1.
+arrivé un jour plus tard. Seuls les compteurs dont vous avez créé l'appareil
+sont lus. À l'ajout d'un appareil de compteur, les 14 derniers jours sont
+remplis aussitôt ; ensuite les 3 derniers jours sont relus toutes les heures,
+et les 14 jours une fois par jour (après 4 h, heure britannique) pour les
+relevés qu'Octopus complète en retard. Le gaz relevé en mètres cubes (SMETS2)
+est converti en kWh avec le pouvoir calorifique de la configuration
+(×1,02264 ÷ 3,6) ; choisissez kWh pour un compteur de gaz SMETS1. **Après un
+changement de compteur de gaz** (nouveau numéro de série), revérifiez
+**Unité des relevés du compteur de gaz** : un SMETS1 remplacé par un SMETS2
+passe des kWh aux mètres cubes.
 
-Pour voir les coûts, créez un contrat dans **Suivi de l'énergie → Contrats**
-depuis le modèle **Octopus Energy électricité** (ou **gaz**), rattachez-le à
-l'appareil du compteur et saisissez l'abonnement affiché par l'appareil.
-Gladys demande alors à l'intégration de tarifer chaque demi-heure depuis
-votre propre historique de tarifs, changements de tarif compris.
+Pour voir les coûts, créez un contrat dans **Suivi de l'énergie → Contrats** :
+
+- depuis le modèle **Octopus Energy électricité**, rattaché à l'appareil du
+  compteur d'**électricité** ;
+- depuis le modèle **Octopus Energy gaz**, rattaché à l'appareil du compteur
+  de **gaz** (jamais à celui d'électricité : les coûts du gaz se mêleraient à
+  ceux de l'électricité).
+
+Saisissez l'abonnement affiché par l'appareil. Gladys demande alors à
+l'intégration de tarifer chaque demi-heure depuis votre propre historique de
+tarifs, changements de tarif compris ; une demi-heure hors de tout contrat du
+compte (juste avant le premier, par exemple) prend le contrat le plus proche.
 
 ## Scènes
 
@@ -78,22 +90,34 @@ rapport à la période.
 
 ## Limites
 
-- Grande-Bretagne uniquement (API d'Octopus Energy UK). L'Allemagne, l'Italie
-  et les autres pays Kraken ne sont pas couverts.
+- Grande-Bretagne uniquement (API d'Octopus Energy UK). **L'Allemagne et
+  l'Italie ne sont pas couvertes dans cette version** (leur API Octopus
+  fonctionne autrement, avec une connexion par e-mail et mot de passe), ni les
+  autres pays Kraken.
 - Les tarifs à deux prix (Economy 7) n'ont pas de prix du kWh unique : leur
   fonctionnalité de prix reste vide et leur contrat ne peut pas encore être
   tarifé.
 - Les compteurs d'injection (solaire) ne sont pas encore lus.
 - Un prix Agile négatif compte comme un coût nul dans les contrats (les coûts
   de Gladys ne peuvent pas être négatifs).
-- Appels : le compte toutes les 6 heures, la consommation et le tarif de
-  chaque compteur toutes les heures, les prix Agile toutes les heures (et
-  toutes les 15 minutes après 16 h jusqu'à la publication de ceux de demain).
+- Appels : le compte toutes les 6 heures (après un échec : 5, 15, puis toutes
+  les 60 minutes), la consommation de chaque compteur créé et chaque tarif
+  toutes les heures, les prix Agile toutes les heures, à 16 h 02 (heure
+  britannique) puis toutes les 15 minutes jusqu'à la publication de ceux de
+  demain. Quand Octopus demande de ralentir (429), tous les appels attendent
+  le délai demandé (15 minutes sinon).
 
 ## Dépannage
 
 - **« Octopus a refusé la clé d'API ou le numéro de compte »** : recopiez-les
   depuis la page API access ; une clé régénérée remplace l'ancienne.
+- **« Octopus ne connaît pas ce numéro de compte »** : vérifiez le numéro
+  (A-XXXXXXXX) ; l'intégration réessaie après 5, 15, puis toutes les 60
+  minutes.
+- **« Le compte Octopus n'a pas pu être lu … nouvel essai dans N min »** :
+  Octopus était occupé ou injoignable ; rien à faire, l'intégration réessaie.
+- **« Octopus ne publie pas ce tarif (404) »** : le produit Agile ou la région
+  a changé ; ils sont relus chaque jour.
 - **Pas de consommation** : vérifiez que l'appareil du compteur est créé ; les
   données des compteurs communicants peuvent mettre un jour ou plus à
   arriver chez Octopus.
@@ -103,7 +127,8 @@ rapport à la période.
 
 ## Confidentialité
 
-La clé est stockée chiffrée par Gladys et envoyée uniquement à
+La clé et le numéro de compte sont stockés chiffrés par Gladys. La clé est
+envoyée uniquement à
 `api.octopus.energy`, et seulement pour les requêtes du compte et de la
 consommation (les tarifs et les prix Agile sont publics). Rien n'est
 journalisé avec la clé ou le numéro de compte.

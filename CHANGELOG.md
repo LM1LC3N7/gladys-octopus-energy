@@ -14,9 +14,15 @@ the notes of the version's GitHub Release.
 
 - One device per Octopus Energy (Great Britain) electricity and gas meter
   point: the 30-minute consumption fed, dated, to the Gladys energy
-  monitoring (14 days filled in when the device is added), the current unit
-  rate and the standing charge, VAT included. SMETS2 gas readings in cubic
-  metres are converted to kWh.
+  monitoring (14 days filled in as soon as the device is created, and again
+  once a day for late readings), the current unit rate and the standing
+  charge, VAT included. SMETS2 gas readings in cubic metres are converted to
+  kWh.
+- Resilience: the account is read again after 5, 15, then every 60 minutes
+  when it fails; a CloudFront 403 is not taken for a refused key; a 429
+  pauses every call for its Retry-After.
+- `THIRD_PARTY_NOTICES.md` with the MIT license of
+  BottlecapDave/HomeAssistant-OctopusEnergy, shipped in the image.
 - One device per Agile region with the public half-hourly prices (no account
   needed): price now, next, today's average, minimum and maximum, "cheap
   period" and "negative price" sensors. The region can follow the account's

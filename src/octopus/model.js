@@ -16,7 +16,6 @@
 import { GAS_VOLUME_CORRECTION } from '../constants.js';
 
 const HALF_HOUR = 30 * 60_000;
-const DAY = 24 * 60 * 60_000;
 const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 const time = (value) => {
   const t = Date.parse(value);
@@ -43,6 +42,33 @@ export function parseTariff(code) {
 }
 
 export const productOf = (code) => parseTariff(code)?.product;
+
+/**
+ * The agreement in force at `t`, else the nearest one in time (a half hour
+ * just outside the agreements, e.g. before the first one, is priced with its
+ * neighbour); undefined only without any agreement.
+ */
+export function agreementNear(agreements = [], t) {
+  const exact = agreementAt(agreements, t);
+  if (exact) {
+    return exact;
+  }
+  let best;
+  let bestDistance = Infinity;
+  for (const a of agreements) {
+    const from = time(a.valid_from);
+    if (from === null) {
+      continue;
+    }
+    const to = a.valid_to ? time(a.valid_to) : Infinity;
+    const distance = t < from ? from - t : t - to;
+    if (distance < bestDistance) {
+      best = a;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
 
 /** The agreement in force at `t`, or undefined. */
 export function agreementAt(agreements = [], t) {
@@ -192,6 +218,27 @@ export function startOfLocalDay(t, timeZone) {
   return start;
 }
 
+/**
+ * The local midnight starting the day after `t`. Never `t + 24 h`: a local
+ * day lasts 23 hours in March and 25 hours in October.
+ */
+export function nextLocalDay(t, timeZone) {
+  const date = localDate(t, timeZone);
+  let next = startOfLocalDay(t, timeZone) + 22 * 60 * 60_000;
+  while (localDate(next, timeZone) === date) {
+    next += HALF_HOUR;
+  }
+  return next;
+}
+
+/** The instant of a local wall-clock time on the day of `t` (DST-safe). */
+export function localTimeOn(t, { hour, minute }, timeZone) {
+  let at = startOfLocalDay(t, timeZone) + (hour * 60 + minute) * 60_000;
+  const clock = localClock(at, timeZone);
+  at += ((hour - clock.hour) * 60 + (minute - clock.minute)) * 60_000;
+  return at;
+}
+
 // --- Agile price state -------------------------------------------------------------
 
 // Only the short slots of a time-of-use tariff (Agile: 30 minutes) make a price curve.
@@ -264,7 +311,7 @@ export function priceState(slots, t, { timeZone, cheapHours }) {
   }
   const daySlots = slotsOfDay(slots, localDate(t, timeZone), timeZone);
   const cheap = cheapSlots(daySlots, cheapHours);
-  const tomorrowSlots = slotsOfDay(slots, localDate(t + DAY, timeZone), timeZone);
+  const tomorrowSlots = slotsOfDay(slots, localDate(nextLocalDay(t, timeZone), timeZone), timeZone);
   return {
     slot,
     next: slot.endsAt ? slotAt(slots, Date.parse(slot.endsAt)) : undefined,

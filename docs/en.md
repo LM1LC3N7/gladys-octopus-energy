@@ -43,16 +43,27 @@ With an account, "Automatic" takes the region of your electricity tariff.
 Smart meter readings reach Octopus with a delay (often the next day). The
 integration therefore publishes **dated** half hours: each reading lands in
 its own half hour of the energy monitoring, even when it arrives a day late.
-When a meter device is first added, the last 14 days are filled in; then the
-last 3 days are read every hour. Gas read in cubic metres (SMETS2) is
+Only the meters whose device you created are read. When a meter device is
+added, the last 14 days are filled in right away; then the last 3 days are
+read every hour, and the 14 days again once a day (after 04:00 UK time) for
+the readings Octopus fills in late. Gas read in cubic metres (SMETS2) is
 converted to kWh with the calorific value of the configuration (×1.02264 ÷
-3.6); choose kWh for a SMETS1 gas meter.
+3.6); choose kWh for a SMETS1 gas meter. **After a gas meter change** (new
+serial), check **Unit of the gas meter readings** again: a SMETS1 meter
+replaced by a SMETS2 one switches from kWh to cubic metres.
 
-To see the costs, create a contract in **Energy monitoring → Contracts** from
-the **Octopus Energy electricity** (or **gas**) template, attach it to the
-meter device and enter the standing charge shown by the device. Gladys then
-asks the integration to price each half hour from your own tariff history,
-tariff changes included.
+To see the costs, create a contract in **Energy monitoring → Contracts**:
+
+- from the **Octopus Energy electricity** template, attached to the
+  **electricity** meter device;
+- from the **Octopus Energy gas** template, attached to the **gas** meter
+  device (never to the electricity one: the gas costs would be mixed with the
+  electricity costs).
+
+Enter the standing charge shown by the device. Gladys then asks the
+integration to price each half hour from your own tariff history, tariff
+changes included; a half hour outside every agreement of the account (just
+before your first one, for example) takes the nearest agreement.
 
 ## Scenes
 
@@ -73,21 +84,31 @@ their variable list (written `{{<step>.<action>.<key>}}`, for example
 
 ## Limits
 
-- Great Britain only (Octopus Energy UK API). Germany, Italy and the other
-  Kraken countries are not covered.
+- Great Britain only (Octopus Energy UK API). **Germany and Italy are not
+  covered in this version** (their Octopus API works differently, with an
+  e-mail and password login), nor the other Kraken countries.
 - Two-rate tariffs (Economy 7) have no single unit rate: their unit rate
   feature stays empty and their contract cannot be priced yet.
 - Export meters (solar) are not read yet.
 - A negative Agile price is counted as a zero cost in the contracts (Gladys
   costs cannot be negative).
-- Calls: the account every 6 hours, each meter's consumption and tariff every
-  hour, the Agile prices every hour (and every 15 minutes after 16:00 until
-  tomorrow's prices are out).
+- Calls: the account every 6 hours (after a failure: 5, 15, then every 60
+  minutes), each created meter's consumption and each tariff every hour, the
+  Agile prices every hour, at 16:02 UK time and every 15 minutes after that
+  until tomorrow's prices are out. When Octopus asks to slow down (429), every
+  call pauses for the time it asks (15 minutes otherwise).
 
 ## Troubleshooting
 
 - **"Octopus refused the API key or the account number"**: copy them again
   from the API access page; a key regenerated there replaces the old one.
+- **"Octopus does not know this account number"**: check the number
+  (A-XXXXXXXX); the integration tries again after 5, 15, then every 60
+  minutes.
+- **"The Octopus account could not be read … new try in N min"**: Octopus was
+  busy or unreachable; nothing to do, the integration tries again.
+- **"Octopus does not publish this tariff (404)"**: the Agile product or the
+  region changed; they are read again every day.
 - **No consumption**: check that the meter device is created; smart meter
   data can take a day or more to reach Octopus.
 - **No Agile device**: choose a region, or enter your account so "Automatic"
@@ -96,7 +117,8 @@ their variable list (written `{{<step>.<action>.<key>}}`, for example
 
 ## Privacy
 
-The key is stored encrypted by Gladys and sent only to `api.octopus.energy`,
+The key and the account number are stored encrypted by Gladys. The key is
+sent only to `api.octopus.energy`,
 and only for the account and consumption requests (the tariffs and Agile
 prices are public). Nothing is logged with the key or the account number.
 

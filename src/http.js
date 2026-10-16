@@ -25,6 +25,22 @@ export class OctopusError extends Error {
   }
 }
 
+export const isCloudFrontError = (text = '') =>
+  text.includes('The request could not be satisfied') && /cloudfront/i.test(text);
+
+/** Retry-After (seconds or an HTTP date) -> milliseconds, undefined when absent or invalid. */
+export function retryAfterMs(value, now = Date.now()) {
+  if (value === null || value === undefined || value === '') {
+    return undefined;
+  }
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : undefined;
+}
+
 /** GET a URL; resolves the parsed JSON body, throws an OctopusError otherwise. */
 export async function getJson(url, { apiKey } = {}) {
   const headers = { 'User-Agent': USER_AGENT, Accept: 'application/json' };
@@ -40,14 +56,24 @@ export async function getJson(url, { apiKey } = {}) {
   }
   const text = await response.text();
   if (response.status === 401 || response.status === 403) {
-    throw new OctopusError('bad_key', 'Octopus refused the API key', response.status);
+    // CloudFront (in front of the API) answers its own 403 when it is
+    // overloaded: a passing error, not a refused key (as BottlecapDave does).
+    if (isCloudFrontError(text)) {
+      throw new OctopusError('transient', 'Octopus is busy (CloudFront 403)', response.status);
+    }
+    // Only a key that was actually sent can be refused.
+    throw apiKey
+      ? new OctopusError('bad_key', 'Octopus refused the API key', response.status)
+      : new OctopusError('http', `Octopus answered ${response.status}`, response.status);
   }
   if (response.status === 404) {
     // Never echo the URL: it holds the account number or a meter point.
     throw new OctopusError('not_found', 'Octopus answered 404 (not found)', 404);
   }
   if (response.status === 429) {
-    throw new OctopusError('rate_limited', 'Octopus asked to slow down (429)', 429);
+    const error = new OctopusError('rate_limited', 'Octopus asked to slow down (429)', 429);
+    error.retryAfter = retryAfterMs(response.headers?.get?.('retry-after'));
+    throw error;
   }
   if (!response.ok) {
     throw new OctopusError('http', `Octopus answered ${response.status}`, response.status);

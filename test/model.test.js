@@ -9,7 +9,10 @@ import { normalizeConfig } from '../src/config.js';
 import { intervalCosts, tariffRanges } from '../src/energy.js';
 import {
   agreementAt,
+  agreementNear,
   cheapestWindow,
+  localTimeOn,
+  nextLocalDay,
   consumptionIntervals,
   gasKwh,
   metersOf,
@@ -38,6 +41,54 @@ import {
 } from './fixtures/octopus.js';
 
 const LONDON = 'Europe/London';
+const iso = (t) => new Date(t).toISOString();
+
+test('the next local day and a local time, on the two DST days', () => {
+  // 29 March 2026: 23 hours (01:00 GMT -> 02:00 BST).
+  const march = Date.parse('2026-03-29T00:30:00Z');
+  assert.equal(iso(startOfLocalDay(march, LONDON)), '2026-03-29T00:00:00.000Z');
+  assert.equal(iso(nextLocalDay(march, LONDON)), '2026-03-29T23:00:00.000Z');
+  assert.equal(
+    iso(localTimeOn(march, { hour: 16, minute: 2 }, LONDON)),
+    '2026-03-29T15:02:00.000Z',
+  );
+  // 25 October 2026: 25 hours (02:00 BST -> 01:00 GMT); t + 24 h is still the 25th.
+  const october = Date.parse('2026-10-24T23:30:00Z');
+  assert.equal(iso(nextLocalDay(october, LONDON)), '2026-10-26T00:00:00.000Z');
+  assert.equal(
+    iso(nextLocalDay(nextLocalDay(october, LONDON), LONDON)),
+    '2026-10-27T00:00:00.000Z',
+  );
+  assert.equal(
+    iso(localTimeOn(october, { hour: 16, minute: 2 }, LONDON)),
+    '2026-10-25T16:02:00.000Z',
+  );
+  // Tomorrow's slots of the 25-hour day are those of the 26th.
+  const slots = slotsOf([
+    { value_inc_vat: 10, valid_from: '2026-10-24T23:30:00Z', valid_to: '2026-10-25T00:00:00Z' },
+    { value_inc_vat: 20, valid_from: '2026-10-25T23:30:00Z', valid_to: '2026-10-26T00:00:00Z' },
+    { value_inc_vat: 30, valid_from: '2026-10-26T00:00:00Z', valid_to: '2026-10-26T00:30:00Z' },
+  ]);
+  const state = priceState(slots, october, { timeZone: LONDON, cheapHours: 1 });
+  assert.deepEqual(
+    state.tomorrow.slots.map((s) => s.price),
+    [0.3],
+  );
+});
+
+test('a half hour outside every agreement takes the nearest one', () => {
+  const agreements = [
+    { tariff_code: 'A', valid_from: '2026-01-01T00:00:00Z', valid_to: '2026-06-01T00:00:00Z' },
+    { tariff_code: 'B', valid_from: '2026-06-02T00:00:00Z', valid_to: '2026-09-01T00:00:00Z' },
+  ];
+  const near = (t) => agreementNear(agreements, Date.parse(t))?.tariff_code;
+  assert.equal(near('2025-12-31T23:30:00Z'), 'A', 'before the first');
+  assert.equal(near('2026-06-01T02:00:00Z'), 'A', 'in a gap, nearer the end of A');
+  assert.equal(near('2026-06-01T22:00:00Z'), 'B', 'in a gap, nearer the start of B');
+  assert.equal(near('2026-10-01T00:00:00Z'), 'B', 'after the last');
+  assert.equal(agreementNear([], Date.now()), undefined);
+  assert.throws(() => tariffRanges([{ starts_at: '2026-10-01T00:00:00Z' }], []), /no agreement/);
+});
 
 test('tariff codes', () => {
   assert.deepEqual(parseTariff('E-1R-AGILE-24-10-01-C'), {

@@ -3,7 +3,13 @@
 // -----------------------------------------------------------------------------
 
 import { CURRENCY } from './constants.js';
-import { cheapestWindow, localClock, localDate, slotsOfDay } from './octopus/model.js';
+import {
+  cheapestWindow,
+  localClock,
+  localDate,
+  nextLocalDay,
+  slotsOfDay,
+} from './octopus/model.js';
 
 export const PERIODS = ['next_24h', 'today', 'tomorrow'];
 
@@ -59,7 +65,7 @@ export function cheapestWindowOutputs(slots, { period, hours, now, timeZone }) {
       (s) => s.endsAt > nowIso,
     );
   } else if (period === 'tomorrow') {
-    candidates = slotsOfDay(slots, localDate(now + DAY, timeZone), timeZone);
+    candidates = slotsOfDay(slots, localDate(nextLocalDay(now, timeZone), timeZone), timeZone);
   } else {
     const limit = new Date(now + DAY).toISOString();
     candidates = slots.filter((s) => s.endsAt && s.endsAt > nowIso && s.startsAt < limit);

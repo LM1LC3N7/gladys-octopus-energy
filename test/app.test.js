@@ -18,6 +18,7 @@ import {
   MPRN,
   NOW,
   OLD_RATES,
+  OLD_SERIAL,
   PRODUCTS,
   SERIAL,
   STANDING_CHARGES,
@@ -73,6 +74,7 @@ function setup({ config = CONFIG, routes = {}, now = NOW, devices = [] } = {}) {
   const clock = { now };
   const app = new OctopusApp({ gladys, logger: quiet, now: () => clock.now, timers });
   gladys.onScanRequest(() => app.discover());
+  gladys.onDeviceCreated((device) => app.onDeviceCreated(device));
   gladys.onSceneAction(SCENE_ACTIONS.GET_PRICE, (f) => app.getPrice(f));
   gladys.onSceneAction(SCENE_ACTIONS.CHEAPEST_WINDOW, (f) => app.getCheapestWindow(f));
   for (const key of Object.values(WIDGETS)) {
@@ -135,8 +137,15 @@ test('start discovers the meters and the Agile region of the tariff, and publish
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.match(gladys.fake.connectionStatus.message.en, /2 meters, Agile prices of region C/);
   assert.equal(timers.intervals().length, 3, 'prices, consumption, account');
-  const tick = timers.timeouts()[0];
-  assert.equal(tick.ms, 20 * 60_000 + 1000, 'the next tick at 11:00:01Z');
+  assert.deepEqual(
+    timers
+      .timeouts()
+      .map((t) => t.ms)
+      .sort((a, b) => a - b),
+    [20 * 60_000 + 1000, (4 * 60 + 22) * 60_000],
+    'the next tick at 11:00:01Z, the daily Agile read at 16:02 UK time',
+  );
+  assert.ok(!fake.calls.some((c) => c.name === 'consumption'), 'no device created: no read');
   assert.equal(gladys.fake.sceneEvents.length, 0, 'nothing on the first reading');
   await app.stop();
   assert.equal(timers.pending.size, 0);
@@ -163,15 +172,67 @@ test('the consumption backfills 14 days once the devices exist, gas m³ in kWh',
   assert.equal(next.query.period_from, '2026-10-13T10:30:00Z');
 });
 
-test('without the devices the consumption waits, and the backfill is kept for later', async () => {
+test('without the devices Octopus is not read; creating one starts its backfill', async () => {
   const { app, gladys } = setup();
   await gladys.connect();
   await app.start(CONFIG);
-  assert.equal(gladys.fake.energyConsumption[`${ELEC}:consumption`], undefined);
+  await app.refreshConsumption();
+  assert.ok(!fake.calls.some((c) => c.name === 'consumption'));
+  const device = consumptionDevice(ELEC);
+  gladys.fake.devices.push(device);
+  await gladys.fake.deviceCreated(device);
+  const read = fake.calls.find((c) => c.path.includes(SERIAL));
+  assert.equal(read.query.period_from, '2026-10-02T10:30:00Z', '14 days');
+  assert.ok(gladys.fake.energyConsumption[`${ELEC}:consumption`].length > 600);
+  assert.ok(
+    !fake.calls.some((c) => c.path.includes(GAS_SERIAL)),
+    'the gas device is still not created',
+  );
+});
+
+test('the 14-day read runs again once a day, after 04:00 UK time', async () => {
+  const { app, gladys, clock } = setup({ devices: [consumptionDevice(ELEC)] });
+  await gladys.connect();
+  await app.start(CONFIG);
+  const fromOf = async (iso) => {
+    clock.now = Date.parse(iso);
+    fake.calls.length = 0;
+    await app.refreshConsumption();
+    return fake.calls.find((c) => c.path.includes(SERIAL)).query.period_from;
+  };
+  assert.equal(await fromOf('2026-10-17T02:30:00Z'), '2026-10-14T02:30:00Z', '03:30 UK: 3 days');
+  assert.equal(await fromOf('2026-10-17T03:30:00Z'), '2026-10-03T03:30:00Z', '04:30 UK: 14 days');
+  assert.equal(await fromOf('2026-10-17T04:30:00Z'), '2026-10-14T04:30:00Z', 'then 3 days');
+});
+
+test('the serial: another meter of the point is tried when the known one has nothing', async () => {
+  const state = { serialWithData: SERIAL };
+  const routes = {
+    consumption: (call) => {
+      if (call.path.includes(OLD_SERIAL)) {
+        return state.serialWithData === OLD_SERIAL
+          ? page(readings('2026-10-14T00:00:00Z', '2026-10-15T00:00:00Z', 0.3))
+          : page([]);
+      }
+      if (call.path.includes(SERIAL)) {
+        return state.serialWithData === SERIAL
+          ? page(readings('2026-10-14T00:00:00Z', '2026-10-15T00:00:00Z', 0.2))
+          : json({ detail: 'Not found.' }, 404);
+      }
+      return page([]);
+    },
+  };
+  const { app, gladys } = setup({ routes, devices: [consumptionDevice(ELEC)] });
+  await gladys.connect();
+  await app.start(CONFIG);
+  const entry = app.meters.get(`electricity:${MPAN}`);
+  assert.equal(entry.serial, SERIAL);
+  state.serialWithData = OLD_SERIAL;
   fake.calls.length = 0;
   await app.refreshConsumption();
-  const read = fake.calls.find((c) => c.path.includes(SERIAL));
-  assert.equal(read.query.period_from, '2026-10-02T10:30:00Z', 'still 14 days');
+  assert.equal(entry.serial, OLD_SERIAL, 'the 404 serial is skipped, the other one is kept');
+  const last = gladys.fake.energyConsumption[`${ELEC}:consumption`].at(-1);
+  assert.equal(last.kwh, 0.3);
 });
 
 test('the tick fires the cheap period and negative price transitions', async () => {
@@ -235,13 +296,93 @@ test('a refused key says so, and the public Agile prices still run', async () =>
   assert.ok(!JSON.stringify(gladys.fake.connectionStatuses).includes('sk_live_test'));
 });
 
-test('a refused key without Agile stops there', async () => {
-  const routes = { account: () => json({ detail: 'Not found.' }, 404) };
+test('an unknown account number without Agile: said, and retried after 5, 15, 60 min', async () => {
+  const state = { found: false };
+  const routes = {
+    account: () => (state.found ? json(account()) : json({ detail: 'Not found.' }, 404)),
+  };
+  const config = { ...CONFIG, agile_region: 'off' };
+  const { app, gladys, timers } = setup({ routes, config });
+  await app.start(config);
+  assert.equal(gladys.fake.connectionStatus.connected, false);
+  assert.match(gladys.fake.connectionStatus.message.en, /does not know this account number/);
+  assert.equal(timers.intervals().length, 3, 'never left without a timer');
+  const retry = () =>
+    timers.timeouts().find((t) => [5, 15, 60].map((m) => m * 60_000).includes(t.ms));
+  assert.equal(retry().ms, 5 * 60_000);
+  const fire = async () => {
+    const t = retry();
+    timers.pending.delete(t.id);
+    await t.fn();
+  };
+  await fire();
+  assert.equal(retry().ms, 15 * 60_000);
+  await fire();
+  assert.equal(retry().ms, 60 * 60_000);
+  state.found = true;
+  await fire();
+  assert.equal(app.meters.size, 2);
+  assert.match(gladys.fake.connectionStatus.message.en, /Connected: 2 meters/);
+  assert.equal(retry(), undefined, 'no more retry once the account is read');
+});
+
+test('a transient account failure keeps a clear status and Agile appears on the retry', async () => {
+  const state = { up: false };
+  const routes = {
+    account: () =>
+      state.up
+        ? json(account())
+        : new Response('<html>The request could not be satisfied. CloudFront</html>', {
+            status: 403,
+          }),
+  };
   const { app, gladys, timers } = setup({ routes });
   await app.start(CONFIG);
-  assert.equal(gladys.fake.connectionStatus.connected, false);
-  assert.match(gladys.fake.connectionStatus.message.en, /refused the API key or the account/);
-  assert.equal(timers.intervals().length, 0);
+  assert.notEqual(gladys.fake.connectionStatus.message.en.includes('refused'), true);
+  assert.match(gladys.fake.connectionStatus.message.en, /could not be read.*new try in 5 min/);
+  assert.equal(app.agile, null, 'the region comes from the tariff, not known yet');
+  state.up = true;
+  const retry = timers.timeouts().find((t) => t.ms === 5 * 60_000);
+  await retry.fn();
+  assert.equal(app.agile.region, 'C');
+  assert.equal(gladys.fake.lastState(`${AGILE}:price`), pence('2026-10-16T10:30:00Z'));
+});
+
+test('a 403 on a public endpoint is not a refused key', async () => {
+  const routes = { rates: () => json({ detail: 'Forbidden' }, 403) };
+  const { app, gladys } = setup({ routes, config: { agile_region: 'C' } });
+  await app.start({ agile_region: 'C' });
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /refused the API key/);
+  assert.match(gladys.fake.connectionStatus.message.en, /unreachable/);
+});
+
+test('a 429 interrupts the cycle and pauses every call for Retry-After', async () => {
+  const routes = {
+    rates: () => new Response('{}', { status: 429, headers: { 'retry-after': '1200' } }),
+  };
+  const { app, gladys, clock } = setup({ routes, devices: [consumptionDevice(ELEC)] });
+  await gladys.connect();
+  await app.start(CONFIG);
+  assert.match(gladys.fake.connectionStatus.message.en, /slow down: every call paused for 20 min/);
+  assert.equal(fake.calls.filter((c) => c.name === 'rates').length, 1, 'the cycle stopped');
+  assert.ok(!fake.calls.some((c) => c.name === 'consumption'), 'consumption not read');
+  fake.calls.length = 0;
+  await app.run(app.generation, () => app.refreshPrices());
+  assert.equal(fake.calls.length, 0, 'still paused');
+  clock.now = NOW + 21 * 60_000;
+  await app.run(app.generation, () => app.refreshPrices());
+  assert.ok(fake.calls.length > 0, 'calls again after the pause');
+});
+
+test('no timer is re-armed after a stop', async () => {
+  const { app, timers } = setup();
+  await app.start(CONFIG);
+  const pending = [...timers.pending.values()].filter((t) => t.kind === 'timeout');
+  await app.stop();
+  for (const t of pending) {
+    await t.fn();
+  }
+  assert.equal(timers.pending.size, 0);
 });
 
 test('scene actions and the widget', async () => {

@@ -2,11 +2,12 @@
 // The delegated energy contract: the core sends the 30-minute intervals of a
 // billing period, the integration answers one cost per interval from the
 // unit rates of the tariff the meter point was on at that instant (the
-// account agreements: a tariff change mid-period is priced right). Pure; the
+// account agreements: a tariff change mid-period is priced right; a half hour
+// outside every agreement takes the nearest one). Pure; the
 // rates are fetched by the app.
 // -----------------------------------------------------------------------------
 
-import { agreementAt, parseTariff, slotAt } from './octopus/model.js';
+import { agreementNear, parseTariff, slotAt } from './octopus/model.js';
 
 const HALF_HOUR = 30 * 60_000;
 
@@ -15,9 +16,9 @@ export function tariffRanges(intervals, agreements) {
   const ranges = new Map();
   for (const { starts_at } of intervals) {
     const t = Date.parse(starts_at);
-    const agreement = agreementAt(agreements, t);
+    const agreement = agreementNear(agreements, t);
     if (!agreement) {
-      throw new Error(`No Octopus agreement in force on ${starts_at}`);
+      throw new Error('The Octopus meter point has no agreement');
     }
     const range = ranges.get(agreement.tariff_code) ?? { from: t, to: t + HALF_HOUR };
     range.from = Math.min(range.from, t);
@@ -35,7 +36,7 @@ export function tariffRanges(intervals, agreements) {
 export function intervalCosts(intervals, agreements, slotsByTariff) {
   return intervals.map(({ starts_at, kwh }) => {
     const t = Date.parse(starts_at);
-    const tariffCode = agreementAt(agreements, t)?.tariff_code;
+    const tariffCode = agreementNear(agreements, t)?.tariff_code;
     const slot = slotAt(slotsByTariff.get(tariffCode) ?? [], t);
     if (!slot) {
       // Never a silent zero: the core retries the interval at its next run.

@@ -11,13 +11,17 @@ import { normalizeConfig } from './config.js';
 import {
   ACCOUNT_INTERVAL,
   BACKFILL_DAYS,
+  BACKFILL_HOUR,
   CONSUMPTION_DAYS,
   CONSUMPTION_INTERVAL,
   CONTRACT_TEMPLATES,
+  DISCOVER_BACKOFF,
   PRICES_INTERVAL,
   PRODUCTS_INTERVAL,
+  RATE_LIMIT_PAUSE,
   REGIONS,
   TIME_ZONE,
+  TOMORROW_DAILY,
   TOMORROW_FROM,
   TOMORROW_RETRY,
   WIDGETS,
@@ -41,7 +45,9 @@ import {
   consumptionIntervals,
   localClock,
   localDate,
+  localTimeOn,
   metersOf,
+  nextLocalDay,
   parseTariff,
   pickAgileProduct,
   priceState,
@@ -56,8 +62,12 @@ import { pricesWidget } from './widget.js';
 const DAY = 24 * 60 * 60_000;
 const HALF_HOUR = 30 * 60_000;
 const MAX_INTERVALS_PER_CALL = 2000;
+const MAX_SERIALS = 5;
 const defaultTimers = { setTimeout, clearTimeout, setInterval, clearInterval };
-const FATAL = new Set(['bad_key', 'no_key', 'no_account']);
+/** Account errors that empty the meter list (the account cannot be read as configured). */
+const ACCOUNT_REFUSED = new Set(['bad_key', 'no_account', 'account_not_found']);
+const minutes = (ms) => Math.max(1, Math.ceil(ms / 60_000));
+const sameSerials = (a = [], b = []) => [...a].sort().join('|') === [...b].sort().join('|');
 
 export class OctopusApp {
   constructor({
@@ -74,16 +84,24 @@ export class OctopusApp {
     this.clientFactory = clientFactory;
     this.config = normalizeConfig();
     this.client = undefined;
-    /** `${kind}:${point}` -> { meter, name, external, serial, slots, price, standingCharge, backfilled } */
+    /** `${kind}:${point}` -> { meter, name, external, serial, slots, price, standingCharge, backfilledOn } */
     this.meters = new Map();
     /** { region, product, tariffCode, name, external, slots, price, announced } or null */
     this.agile = null;
     this.products = { list: [], at: 0 };
+    /** Devices created since the last connection (gladys.devices is refreshed on reconnection). */
+    this.createdIds = new Set();
     this.timerIds = [];
     this.tickTimer = undefined;
     this.tomorrowTimer = undefined;
+    this.dailyTimer = undefined;
+    this.discoverTimer = undefined;
+    this.discoverAttempt = 0;
+    this.retryDelay = DISCOVER_BACKOFF[0];
+    /** Every call waits until then after a 429. */
+    this.pausedUntil = 0;
     this.lastStatus = undefined;
-    /** The refused key / missing account number, shown until the account reads again. */
+    /** The last account error, shown until the account reads again. */
     this.accountProblem = null;
     this.generation = 0;
     this.lifecycle = Promise.resolve();
@@ -111,33 +129,43 @@ export class OctopusApp {
     this.config = normalizeConfig(raw);
     this.client = this.clientFactory(this.config.apiKey);
     this.accountProblem = null;
+    this.pausedUntil = 0;
+    this.discoverAttempt = 0;
     if (!this.config.apiKey && !(this.config.agileRegion in REGIONS)) {
       await this.setStatus(false, T.nothing);
       return;
     }
-    // Each step on its own: a refused key must not hold back the public Agile prices.
+    await this.allSteps();
+    if (generation !== this.generation) {
+      return;
+    }
+    // Always armed, whatever the first run gave: a refused key or an outage
+    // never leaves the integration without a next try.
+    const every = (fn, ms) =>
+      this.timerIds.push(this.timers.setInterval(() => this.run(generation, fn), ms));
+    every(() => this.refreshPrices(), PRICES_INTERVAL);
+    every(() => this.refreshConsumption(), CONSUMPTION_INTERVAL);
+    every(() => this.discover(), ACCOUNT_INTERVAL);
+    this.scheduleTick();
+    this.scheduleDaily();
+  }
+
+  /** Discovery, prices, consumption, each on its own: one failure holds back nothing. */
+  async allSteps() {
     for (const step of [
       () => this.discover(),
       () => this.refreshPrices(),
       () => this.refreshConsumption(),
     ]) {
+      if (this.paused()) {
+        return;
+      }
       try {
         await step();
       } catch (err) {
         await this.reportError(err);
       }
     }
-    if (generation !== this.generation || (this.accountProblem && !this.agile)) {
-      return;
-    }
-    const every = (fn, ms) =>
-      this.timerIds.push(
-        this.timers.setInterval(() => fn().catch((err) => this.reportError(err)), ms),
-      );
-    every(() => this.refreshPrices(), PRICES_INTERVAL);
-    every(() => this.refreshConsumption(), CONSUMPTION_INTERVAL);
-    every(() => this.discover(), ACCOUNT_INTERVAL);
-    this.scheduleTick();
   }
 
   async doStop() {
@@ -146,10 +174,44 @@ export class OctopusApp {
       this.timers.clearInterval(id);
     }
     this.timerIds = [];
-    this.timers.clearTimeout(this.tickTimer);
-    this.timers.clearTimeout(this.tomorrowTimer);
-    this.tickTimer = undefined;
-    this.tomorrowTimer = undefined;
+    for (const name of ['tickTimer', 'tomorrowTimer', 'dailyTimer', 'discoverTimer']) {
+      this.timers.clearTimeout(this[name]);
+      this[name] = undefined;
+    }
+  }
+
+  paused() {
+    return this.now() < this.pausedUntil;
+  }
+
+  /** Run a timed job of a generation: nothing after a stop, nothing during a 429 pause. */
+  async run(generation, job) {
+    if (generation !== this.generation || this.paused()) {
+      return;
+    }
+    try {
+      await job();
+    } catch (err) {
+      await this.reportError(err);
+    }
+  }
+
+  /** A timeout of the current generation (never re-armed after doStop()). */
+  later(name, delay, job) {
+    const generation = this.generation;
+    this.timers.clearTimeout(this[name]);
+    this[name] = this.timers.setTimeout(() => {
+      this[name] = undefined;
+      if (generation !== this.generation) {
+        return undefined;
+      }
+      if (this.paused()) {
+        // A 429 pause: the job waits for its end instead of being lost.
+        this.later(name, this.pausedUntil - this.now() + 1000, job);
+        return undefined;
+      }
+      return this.run(generation, job);
+    }, delay);
   }
 
   async setStatus(connected, message) {
@@ -167,18 +229,31 @@ export class OctopusApp {
     // OctopusError messages never hold the key, the account number nor a URL.
     this.logger.warn(`Octopus: ${err.message}`);
     const code = err instanceof OctopusError ? err.code : undefined;
-    if (code === 'bad_key' || code === 'no_key') {
+    const running = this.meters.size > 0 || Boolean(this.agile);
+    if (code === 'rate_limited') {
+      const pause = err.retryAfter ?? RATE_LIMIT_PAUSE;
+      this.pausedUntil = this.now() + pause;
+      await this.setStatus(running, T.rateLimited(minutes(pause)));
+    } else if (err.account && code === 'bad_key') {
       await this.setStatus(false, T.badKey);
     } else if (code === 'no_account') {
       await this.setStatus(Boolean(this.agile), T.noAccount);
+    } else if (code === 'account_not_found') {
+      await this.setStatus(Boolean(this.agile), T.accountNotFound);
+    } else if (err.account) {
+      await this.setStatus(running, T.accountRetry(minutes(this.retryDelay), err.message));
     } else {
-      await this.setStatus(this.meters.size > 0 || Boolean(this.agile), T.unreachable(err.message));
+      await this.setStatus(running, T.unreachable(err.message));
     }
   }
 
   async reportOk() {
     if (this.accountProblem) {
       await this.reportError(this.accountProblem);
+      return;
+    }
+    if (this.config.apiKey && this.meters.size === 0) {
+      await this.setStatus(Boolean(this.agile), T.noMeter(minutes(this.retryDelay)));
       return;
     }
     if (this.meters.size === 0 && !this.agile) {
@@ -202,35 +277,36 @@ export class OctopusApp {
         meters = metersOf(await this.client.account(this.config.accountNumber), now);
       } catch (err) {
         // The public Agile prices run whatever happens to the account.
+        err.account = true;
         accountError = err;
-        if (err instanceof OctopusError && FATAL.has(err.code)) {
+        if (err instanceof OctopusError && ACCOUNT_REFUSED.has(err.code)) {
           this.meters.clear();
-          this.accountProblem = err;
         }
       }
     }
-    if (!accountError) {
-      this.accountProblem = null;
-    }
+    this.accountProblem = accountError ?? null;
     if (!accountError) {
       const known = this.meters;
       this.meters = new Map();
       for (const meter of meters) {
         const key = `${meter.kind}:${meter.point}`;
         const previous = known.get(key);
+        // A meter replaced (or added) on the point: find the serial with data again.
+        const keepSerial = previous && sameSerials(previous.meter.serials, meter.serials);
         this.meters.set(key, {
           meter,
           name: buildMeterDevice(this.gladys, meter).name,
           external: ids(this.gladys, meter.kind, meter.point),
-          serial: previous?.serial,
+          serial: keepSerial ? previous.serial : undefined,
           slots: previous?.slots ?? [],
           price: previous?.price,
           standingCharge: previous?.standingCharge,
-          backfilled: previous?.backfilled ?? false,
+          backfilledOn: previous?.backfilledOn,
         });
       }
     }
     await this.discoverAgile(now);
+    this.planDiscoverRetry(accountError);
     await this.gladys.publishDiscoveredDevices([
       ...[...this.meters.values()].map((e) =>
         buildMeterDevice(this.gladys, { ...e.meter, serial: e.serial }),
@@ -240,6 +316,22 @@ export class OctopusApp {
     if (accountError) {
       throw accountError;
     }
+  }
+
+  /**
+   * After a failed account read, or a key without any meter known yet: read
+   * the account again after 5, 15, then every 60 minutes, until it works.
+   */
+  planDiscoverRetry(error) {
+    this.timers.clearTimeout(this.discoverTimer);
+    this.discoverTimer = undefined;
+    if (!this.config.apiKey || (!error && this.meters.size > 0)) {
+      this.discoverAttempt = 0;
+      return;
+    }
+    this.retryDelay = DISCOVER_BACKOFF[Math.min(this.discoverAttempt, DISCOVER_BACKOFF.length - 1)];
+    this.discoverAttempt += 1;
+    this.later('discoverTimer', this.retryDelay, () => this.allSteps());
   }
 
   /** The Agile region: the configured one, else the region of the account's electricity tariff. */
@@ -270,6 +362,9 @@ export class OctopusApp {
         try {
           this.products = { list: await this.client.products(), at: now };
         } catch (err) {
+          if (err.code === 'rate_limited') {
+            throw err;
+          }
           this.logger.warn(`Octopus products unavailable: ${err.message}`);
         }
       }
@@ -301,53 +396,77 @@ export class OctopusApp {
     );
   }
 
+  /** The window of the prices: from today's local midnight to the real end of tomorrow. */
+  priceWindow(now) {
+    const from = startOfLocalDay(now, TIME_ZONE);
+    return { from, to: nextLocalDay(nextLocalDay(now, TIME_ZONE), TIME_ZONE) };
+  }
+
+  /** The Agile prices of today and tomorrow; announces tomorrow once, retries until it is out. */
+  async refreshAgile() {
+    const now = this.now();
+    if (!this.agile && this.agileRegion()) {
+      // The products list (or the account giving the region) failed before.
+      await this.discoverAgile(now);
+    }
+    const agile = this.agile;
+    if (!agile) {
+      return;
+    }
+    const { from, to } = this.priceWindow(now);
+    agile.slots = slotsOf(
+      await this.client.unitRates(KIND.ELECTRICITY, agile.tariffCode, from, to),
+    );
+    const tomorrow = priceState(agile.slots, now, {
+      timeZone: TIME_ZONE,
+      cheapHours: this.config.cheapHours,
+    })?.tomorrow;
+    const tomorrowDate = localDate(nextLocalDay(now, TIME_ZONE), TIME_ZONE);
+    if (tomorrow) {
+      this.timers.clearTimeout(this.tomorrowTimer);
+      this.tomorrowTimer = undefined;
+      if (!agile.announced.has(tomorrowDate)) {
+        agile.announced.add(tomorrowDate);
+        if (agile.price) {
+          await this.publishEvent(
+            tomorrowEvent(agile.external.device, tomorrow, this.config.cheapHours),
+          );
+        }
+      }
+    } else if (this.tomorrowDue(now) && !this.tomorrowTimer) {
+      // Only the Agile prices are read again, not the meters' tariffs.
+      this.later('tomorrowTimer', TOMORROW_RETRY, async () => {
+        await this.refreshAgile();
+        this.gladys.requestWidgetRefresh(WIDGETS.PRICES);
+      });
+    }
+  }
+
   async refreshPrices() {
     const now = this.now();
-    const dayStart = startOfLocalDay(now, TIME_ZONE);
     let failure;
-    let tomorrowMissing = false;
-    if (this.agile) {
-      const agile = this.agile;
-      try {
-        agile.slots = slotsOf(
-          await this.client.unitRates(
-            KIND.ELECTRICITY,
-            agile.tariffCode,
-            dayStart,
-            dayStart + 2 * DAY,
-          ),
-        );
-        const tomorrow = priceState(agile.slots, now, {
-          timeZone: TIME_ZONE,
-          cheapHours: this.config.cheapHours,
-        })?.tomorrow;
-        const tomorrowDate = localDate(now + DAY, TIME_ZONE);
-        if (tomorrow) {
-          if (!agile.announced.has(tomorrowDate)) {
-            agile.announced.add(tomorrowDate);
-            if (agile.price) {
-              await this.publishEvent(
-                tomorrowEvent(agile.external.device, tomorrow, this.config.cheapHours),
-              );
-            }
-          }
-        } else if (this.tomorrowDue(now)) {
-          tomorrowMissing = true;
-        }
-      } catch (err) {
-        failure = err;
+    try {
+      await this.refreshAgile();
+    } catch (err) {
+      if (err.code === 'rate_limited') {
+        throw err;
       }
+      failure = err;
     }
+    const { from, to } = this.priceWindow(now);
     for (const entry of this.meters.values()) {
       const { kind, tariffCode } = entry.meter;
       try {
         const [rates, charges] = await Promise.all([
-          this.client.unitRates(kind, tariffCode, dayStart, dayStart + 2 * DAY),
-          this.client.standingCharges(kind, tariffCode, dayStart, dayStart + DAY),
+          this.client.unitRates(kind, tariffCode, from, to),
+          this.client.standingCharges(kind, tariffCode, from, nextLocalDay(now, TIME_ZONE)),
         ]);
         entry.slots = slotsOf(rates);
         entry.standingCharge = slotAt(slotsOf(charges), now);
       } catch (err) {
+        if (err.code === 'rate_limited') {
+          throw err;
+        }
         // A two-rate (Economy 7) tariff has no standard unit rates: see TODO.md.
         this.logger.warn(`Tariff ${tariffCode} unavailable: ${err.message}`);
         failure ??= err.code === 'not_found' ? undefined : err;
@@ -358,12 +477,25 @@ export class OctopusApp {
       throw failure;
     }
     await this.reportOk();
-    if (tomorrowMissing && !this.tomorrowTimer) {
-      this.tomorrowTimer = this.timers.setTimeout(() => {
-        this.tomorrowTimer = undefined;
-        return this.refreshPrices().catch((err) => this.reportError(err));
-      }, TOMORROW_RETRY);
+  }
+
+  /** Every day at 16:02 UK time, when tomorrow's Agile prices come out. */
+  scheduleDaily() {
+    const now = this.now();
+    let at = localTimeOn(now, TOMORROW_DAILY, TIME_ZONE);
+    if (at <= now) {
+      at = localTimeOn(nextLocalDay(now, TIME_ZONE), TOMORROW_DAILY, TIME_ZONE);
     }
+    const generation = this.generation;
+    this.later('dailyTimer', at - now, async () => {
+      try {
+        await this.refreshAgile();
+      } finally {
+        if (generation === this.generation) {
+          this.scheduleDaily();
+        }
+      }
+    });
   }
 
   /** Move the sensors to the current half hour, fire the Agile transitions. */
@@ -403,16 +535,23 @@ export class OctopusApp {
 
   /** Every half hour (+1 s), when Agile and time-of-use tariffs move. */
   scheduleTick() {
-    this.timers.clearTimeout(this.tickTimer);
+    const generation = this.generation;
     const now = this.now();
     const delay = Math.ceil((now + 1) / HALF_HOUR) * HALF_HOUR - now + 1000;
+    this.timers.clearTimeout(this.tickTimer);
     this.tickTimer = this.timers.setTimeout(async () => {
+      this.tickTimer = undefined;
+      if (generation !== this.generation) {
+        return;
+      }
       try {
         await this.tick();
       } catch (err) {
         this.logger.warn(`Tick failed: ${err.message}`);
       }
-      this.scheduleTick();
+      if (generation === this.generation) {
+        this.scheduleTick();
+      }
     }, delay);
   }
 
@@ -424,63 +563,125 @@ export class OctopusApp {
 
   // --- Consumption -------------------------------------------------------------------
 
-  /** The serial to read: the known one, else the newest meter of the point that has data. */
+  /** Whether the user created the device of a meter (no need to read Octopus otherwise). */
+  isCreated(entry) {
+    const id = entry.external.device;
+    return this.createdIds.has(id) || (this.gladys.devices ?? []).some((d) => d.external_id === id);
+  }
+
+  /**
+   * The readings of a meter point: the known serial first; when it has none
+   * (or is unknown), every meter of the point is asked (their order in the
+   * account means nothing) and the one with the latest reading is kept.
+   */
   async readConsumption(entry, from, to) {
-    const serials = entry.serial ? [entry.serial] : [...entry.meter.serials].reverse().slice(0, 3);
-    for (const serial of serials) {
-      const results = await this.client.consumption(
-        entry.meter.kind,
-        entry.meter.point,
-        serial,
-        from,
-        to,
-      );
-      if (results.length > 0 || serial === serials.at(-1)) {
-        if (results.length > 0) {
-          entry.serial = serial;
+    const serials = [...new Set(entry.meter.serials)].slice(0, MAX_SERIALS);
+    const ordered =
+      entry.serial && serials.includes(entry.serial)
+        ? [entry.serial, ...serials.filter((s) => s !== entry.serial)]
+        : serials;
+    let best;
+    for (const serial of ordered) {
+      let results;
+      try {
+        results = await this.client.consumption(
+          entry.meter.kind,
+          entry.meter.point,
+          serial,
+          from,
+          to,
+        );
+      } catch (err) {
+        if (err instanceof OctopusError && err.code === 'not_found') {
+          continue;
         }
+        throw err;
+      }
+      if (results.length === 0) {
+        continue;
+      }
+      if (serial === entry.serial) {
         return results;
       }
+      const last = Math.max(...results.map((r) => Date.parse(r.interval_end) || 0));
+      if (!best || last > best.last) {
+        best = { serial, results, last };
+      }
+    }
+    if (best) {
+      entry.serial = best.serial;
+      return best.results;
     }
     return [];
   }
 
+  /** The day a full 14-day read belongs to: it changes at 04:00 UK time. */
+  backfillDay(now) {
+    return localClock(now, TIME_ZONE).hour >= BACKFILL_HOUR
+      ? localDate(now, TIME_ZONE)
+      : localDate(startOfLocalDay(now, TIME_ZONE) - 1, TIME_ZONE);
+  }
+
   async refreshConsumption() {
-    const now = this.now();
     for (const entry of this.meters.values()) {
-      const days = entry.backfilled ? CONSUMPTION_DAYS : BACKFILL_DAYS;
-      const from = Math.floor((now - days * DAY) / HALF_HOUR) * HALF_HOUR;
-      let results;
-      try {
-        results = await this.readConsumption(entry, from, now);
-      } catch (err) {
-        if (err instanceof OctopusError && err.code === 'bad_key') {
-          throw err;
-        }
-        this.logger.warn(`Consumption of ${entry.name} unavailable: ${err.message}`);
-        continue;
-      }
-      const intervals = consumptionIntervals(results, {
-        now,
-        gasM3: entry.meter.kind === KIND.GAS && this.config.gasUnit === 'm3',
-        calorificValue: this.config.gasCalorificValue,
-      });
-      if (intervals.length === 0) {
-        continue;
-      }
-      try {
-        for (let i = 0; i < intervals.length; i += MAX_INTERVALS_PER_CALL) {
-          await this.gladys.publishEnergyConsumption(
-            entry.external.feature(FEATURE.CONSUMPTION),
-            intervals.slice(i, i + MAX_INTERVALS_PER_CALL),
-          );
-        }
-        entry.backfilled = true;
-      } catch (err) {
-        // 404: the user has not created the device yet; the backfill waits for it.
-        this.logger.debug?.(`Consumption of ${entry.name} not published: ${err.message}`);
-      }
+      await this.consume(entry);
     }
+  }
+
+  async consume(entry) {
+    if (!this.isCreated(entry)) {
+      return;
+    }
+    const now = this.now();
+    const day = this.backfillDay(now);
+    const days = entry.backfilledOn === day ? CONSUMPTION_DAYS : BACKFILL_DAYS;
+    const from = Math.floor((now - days * DAY) / HALF_HOUR) * HALF_HOUR;
+    let results;
+    try {
+      results = await this.readConsumption(entry, from, now);
+    } catch (err) {
+      if (err.code === 'rate_limited') {
+        throw err;
+      }
+      this.logger.warn(`Consumption of ${entry.name} unavailable: ${err.message}`);
+      return;
+    }
+    const intervals = consumptionIntervals(results, {
+      now,
+      gasM3: entry.meter.kind === KIND.GAS && this.config.gasUnit === 'm3',
+      calorificValue: this.config.gasCalorificValue,
+    });
+    try {
+      for (let i = 0; i < intervals.length; i += MAX_INTERVALS_PER_CALL) {
+        await this.gladys.publishEnergyConsumption(
+          entry.external.feature(FEATURE.CONSUMPTION),
+          intervals.slice(i, i + MAX_INTERVALS_PER_CALL),
+        );
+      }
+      entry.backfilledOn = days === BACKFILL_DAYS ? day : entry.backfilledOn;
+    } catch (err) {
+      const log = err.status === 404 ? this.logger.debug : this.logger.warn;
+      // 404: the device was deleted in the meantime; anything else is a real refusal.
+      log?.call(this.logger, `Consumption of ${entry.name} not published: ${err.message}`);
+    }
+  }
+
+  /** A device was created: a meter starts its 14-day backfill right away. */
+  async onDeviceCreated(device) {
+    const id = device?.external_id;
+    if (!id) {
+      return;
+    }
+    this.createdIds.add(id);
+    const entry = [...this.meters.values()].find((e) => e.external.device === id);
+    if (entry) {
+      entry.backfilledOn = undefined;
+      await this.run(this.generation, () => this.consume(entry));
+    }
+  }
+
+  onDeviceDeleted(device) {
+    this.createdIds.delete(device?.external_id);
   }
 
   // --- Scene actions -------------------------------------------------------------------
@@ -597,17 +798,27 @@ export class OctopusApp {
 
   async testConnection() {
     const parts = [];
-    try {
-      if (this.config.apiKey) {
-        if (!this.config.accountNumber) {
-          return T.noAccount;
-        }
+    if (this.config.apiKey) {
+      if (!this.config.accountNumber) {
+        return T.noAccount;
+      }
+      try {
         const meters = metersOf(await this.client.account(this.config.accountNumber), this.now());
         parts.push(
           T.test.meters(meters.map((m) => `${m.kind} …${m.point.slice(-4)} (${m.tariffCode})`)),
         );
+      } catch (err) {
+        if (err.code === 'bad_key') {
+          return T.badKey;
+        }
+        if (err.code === 'account_not_found') {
+          return T.accountNotFound;
+        }
+        return T.unreachable(err.message);
       }
-      if (this.agile) {
+    }
+    if (this.agile) {
+      try {
         const now = this.now();
         const slots = slotsOf(
           await this.client.unitRates(
@@ -618,13 +829,9 @@ export class OctopusApp {
           ),
         );
         parts.push(T.test.agile(this.agile.region, slotAt(slots, now)?.price ?? null));
+      } catch (err) {
+        return err.code === 'not_found' ? T.publicNotFound : T.unreachable(err.message);
       }
-    } catch (err) {
-      const code = err instanceof OctopusError ? err.code : undefined;
-      if (code === 'bad_key' || code === 'not_found') {
-        return T.badKey;
-      }
-      return T.unreachable(err.message);
     }
     if (parts.length === 0) {
       return T.nothing;

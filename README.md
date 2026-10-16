@@ -6,7 +6,8 @@ consumption for the energy monitoring, current unit rate and standing charge,
 public Agile prices with cheap-hours and negative-price scene triggers, a
 dashboard widget and delegated energy contracts. **Unofficial, not affiliated
 with Octopus Energy.** Octopus Energy France is out of scope (see the Octopus
-Energy France integration).
+Energy France integration). **Germany and Italy are not covered in this
+version** (Kraken GraphQL with an e-mail and password login, see TODO.md).
 
 User documentation: [docs/en.md](docs/en.md) · [docs/fr.md](docs/fr.md).
 
@@ -26,13 +27,19 @@ Gladys ⇄ SDK ⇄ src/app.js (OctopusApp)
 - **Account** (`/accounts/<number>/`, HTTP Basic with the API key) at start
   and every 6 hours: import electricity points and gas points with an
   agreement in force; export points and moved-out properties are skipped.
+  A failed read (or a key without any meter yet) is retried after 5, 15,
+  then every 60 minutes. Only a 401/403 of this endpoint is a refused key; a
+  CloudFront 403 is a passing error.
 - **Consumption** (`/…-meter-points/<point>/meters/<serial>/consumption/`)
-  every hour, 3 days back (14 days until the first accepted publication),
-  published dated with `publishEnergyConsumption`. The newest meter of a
-  point with data is used.
+  every hour for the created devices only, 3 days back; 14 days at the
+  creation of the device and once a day after 04:00 UK time. Published dated
+  with `publishEnergyConsumption`. The meter of the point with the latest
+  reading is used; another one is tried when it has nothing.
 - **Tariffs and Agile prices** (public `standard-unit-rates` and
-  `standing-charges` of the tariff code) every hour; tomorrow's Agile prices
-  retried every 15 minutes from 16:00 UK time. A tick every half hour moves
+  `standing-charges` of the tariff code) every hour, up to the real end of
+  tomorrow (23- and 25-hour days included); the Agile prices again at 16:02 UK
+  time and every 15 minutes until tomorrow's are out. A 429 stops the cycle
+  and pauses every call for its Retry-After (15 minutes otherwise). A tick every half hour moves
   the sensors and fires the transitions.
 - **Contracts**: `pricing_mode: delegated`; `onEnergyPrice` finds the
   agreement in force at each interval and prices it with that tariff's unit
@@ -70,4 +77,6 @@ the multi-arch image to GHCR and publishes the GitHub Release.
 
 ## License
 
-Apache-2.0.
+Apache-2.0 (`LICENSE`). The logic ported from BottlecapDave/HomeAssistant-OctopusEnergy
+remains under its MIT license, reproduced in full in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (also shipped in the Docker image).

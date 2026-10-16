@@ -15,6 +15,26 @@ export const T = {
     en: 'Octopus refused the API key or the account number: check them on octopus.energy/dashboard/new/accounts/personal-details/api-access.',
     fr: 'Octopus a refusé la clé d’API ou le numéro de compte : vérifiez-les sur octopus.energy/dashboard/new/accounts/personal-details/api-access.',
   },
+  accountNotFound: {
+    en: 'Octopus does not know this account number for this API key: check it (A-XXXXXXXX) on your bill or the API access page.',
+    fr: 'Octopus ne connaît pas ce numéro de compte pour cette clé d’API : vérifiez-le (A-XXXXXXXX) sur votre facture ou la page « API access ».',
+  },
+  accountRetry: (minutes, message) => ({
+    en: `The Octopus account could not be read (${message}): new try in ${minutes} min.`,
+    fr: `Le compte Octopus n’a pas pu être lu (${message}) : nouvel essai dans ${minutes} min.`,
+  }),
+  noMeter: (minutes) => ({
+    en: `The Octopus account has no meter in use yet: new read in ${minutes} min.`,
+    fr: `Le compte Octopus n’a encore aucun compteur en service : nouvelle lecture dans ${minutes} min.`,
+  }),
+  rateLimited: (minutes) => ({
+    en: `Octopus asked to slow down: every call paused for ${minutes} min.`,
+    fr: `Octopus demande de ralentir : tous les appels sont suspendus ${minutes} min.`,
+  }),
+  publicNotFound: {
+    en: 'Octopus does not publish this tariff (404): the Agile product or region may have changed, it is read again every day.',
+    fr: 'Octopus ne publie pas ce tarif (404) : le produit Agile ou la région a peut-être changé, ils sont relus chaque jour.',
+  },
   noRegion: {
     en: 'No Agile region: choose one in the configuration (or enter your account, the region is then read from your tariff).',
     fr: 'Aucune région Agile : choisissez-en une dans la configuration (ou saisissez votre compte, la région est alors lue dans votre tarif).',

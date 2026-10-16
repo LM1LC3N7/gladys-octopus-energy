@@ -44,9 +44,14 @@ export class OctopusClient {
         apiKey: this.apiKey,
       });
     } catch (err) {
-      // A key that does not own the account answers 404, like an unknown number.
+      // An unknown number (or one this key does not own) answers 404: a
+      // configuration mistake, retried with a backoff, never the fatal path.
       if (err instanceof OctopusError && err.code === 'not_found') {
-        throw new OctopusError('bad_key', 'Octopus does not know this account for this key', 404);
+        throw new OctopusError(
+          'account_not_found',
+          'Octopus does not know this account number for this key',
+          404,
+        );
       }
       throw err;
     }
