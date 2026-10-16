@@ -184,6 +184,15 @@ export class OctopusApp {
     return this.now() < this.pausedUntil;
   }
 
+  /** Throw at once during a 429 pause (calls made on Gladys' demand). */
+  assertNotPaused() {
+    if (this.paused()) {
+      const error = new OctopusError('rate_limited', 'Octopus asked to slow down (429)', 429);
+      error.retryAfter = this.pausedUntil - this.now();
+      throw error;
+    }
+  }
+
   /** Run a timed job of a generation: nothing after a stop, nothing during a 429 pause. */
   async run(generation, job) {
     if (generation !== this.generation || this.paused()) {
@@ -305,8 +314,9 @@ export class OctopusApp {
         });
       }
     }
-    await this.discoverAgile(now);
+    // Planned first: a 429 on the products list must not cancel the account retry.
     this.planDiscoverRetry(accountError);
+    await this.discoverAgile(now);
     await this.gladys.publishDiscoveredDevices([
       ...[...this.meters.values()].map((e) =>
         buildMeterDevice(this.gladys, { ...e.meter, serial: e.serial }),
@@ -766,6 +776,8 @@ export class OctopusApp {
     if (intervals.length === 0) {
       return [];
     }
+    // During a 429 pause, fail at once: the core retries at its next run.
+    this.assertNotPaused();
     const entry = this.contractMeter(contract);
     const slotsByTariff = new Map();
     for (const range of tariffRanges(intervals, entry.meter.agreements)) {
@@ -797,6 +809,9 @@ export class OctopusApp {
   // --- Configuration screen button --------------------------------------------------------
 
   async testConnection() {
+    if (this.paused()) {
+      return T.rateLimited(minutes(this.pausedUntil - this.now()));
+    }
     const parts = [];
     if (this.config.apiKey) {
       if (!this.config.accountNumber) {

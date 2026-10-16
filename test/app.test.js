@@ -369,9 +369,36 @@ test('a 429 interrupts the cycle and pauses every call for Retry-After', async (
   fake.calls.length = 0;
   await app.run(app.generation, () => app.refreshPrices());
   assert.equal(fake.calls.length, 0, 'still paused');
+  // The calls made on Gladys' demand respect the pause too.
+  const test = await gladys.fake.action(ACTIONS.TEST);
+  assert.match(test.data.message.fr, /Octopus demande de ralentir/);
+  const priced = await gladys.fake.energyPrice({
+    contract: { id: 'c1', template_key: 'octopus-gb-electricity', inputs: {} },
+    billing_period: { starts_at: '2026-10-01T00:00:00Z', ends_at: '2026-11-01T00:00:00Z' },
+    cumulative_before: { day: 0, month: 0, billing_period: 0 },
+    intervals: [{ starts_at: '2026-10-16T10:00:00Z', kwh: 1, max_power_kw: 1 }],
+  });
+  assert.equal(priced.success, false, 'the contract fails at once, the core retries');
+  assert.equal(fake.calls.length, 0, 'nothing asked of Octopus during the pause');
   clock.now = NOW + 21 * 60_000;
   await app.run(app.generation, () => app.refreshPrices());
   assert.ok(fake.calls.length > 0, 'calls again after the pause');
+});
+
+test('a 429 on the products list does not cancel the account retry', async () => {
+  const routes = {
+    account: () => json({ detail: 'Server error' }, 500),
+    products: () => new Response('{}', { status: 429 }),
+  };
+  const config = { ...CONFIG, agile_region: 'C' };
+  const { app, gladys, timers } = setup({ routes, config });
+  await app.start(config);
+  assert.match(gladys.fake.connectionStatus.message.en, /slow down/);
+  assert.ok(
+    timers.timeouts().some((t) => t.ms === 5 * 60_000),
+    'the account is still read again in 5 minutes',
+  );
+  assert.equal(timers.intervals().length, 3);
 });
 
 test('no timer is re-armed after a stop', async () => {
