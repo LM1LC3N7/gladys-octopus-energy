@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-16
+
 ### Added
 
 - One device per Octopus Energy (Great Britain) electricity and gas meter
@@ -36,4 +38,5 @@ the notes of the version's GitHub Release.
   the daily standing charge.
 - "Test the connection" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-octopus-energy/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-octopus-energy/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-octopus-energy/releases/tag/v0.1.1
