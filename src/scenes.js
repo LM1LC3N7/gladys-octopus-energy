@@ -1,41 +1,85 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
-//
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
-//
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+// The outputs of the scene actions. Pure.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
+import { CURRENCY } from './constants.js';
+import { cheapestWindow, localClock, localDate, slotsOfDay } from './octopus/model.js';
 
-const logger = createLogger({ name: 'scenes' });
+export const PERIODS = ['next_24h', 'today', 'tomorrow'];
 
-export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
-  },
+const DAY = 24 * 60 * 60_000;
+
+const time = (iso, timeZone) => {
+  if (!iso) {
+    return null;
+  }
+  const { hour, minute } = localClock(Date.parse(iso), timeZone);
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };
+
+/**
+ * The outputs of "price now", for an Agile region (`price`: a priceState) or
+ * a meter (`price`: `{ slot, next }` of its tariff, `standingCharge`).
+ */
+export function priceOutputs({ price, slots = [], standingCharge }, { now, timeZone, cheapHours }) {
+  if (!price?.slot) {
+    return { available: false };
+  }
+  const nowIso = new Date(now).toISOString();
+  const window = cheapestWindow(
+    slots.filter((s) => s.endsAt && s.endsAt > nowIso),
+    cheapHours,
+  );
+  return {
+    available: true,
+    price: price.slot.price,
+    currency: CURRENCY,
+    cheap: price.cheap ?? false,
+    negative: price.slot.price < 0,
+    ends_at: price.slot.endsAt,
+    ends_time: time(price.slot.endsAt, timeZone),
+    next_price: price.next?.price ?? null,
+    avg_price: price.stats?.avg ?? null,
+    min_price: price.stats?.min ?? null,
+    max_price: price.stats?.max ?? null,
+    tomorrow_published: Boolean(price.tomorrow),
+    tomorrow_avg_price: price.tomorrow?.stats.avg ?? null,
+    window_start_time: time(window?.start, timeZone),
+    window_end_time: time(window?.end, timeZone),
+    standing_charge: standingCharge?.price ?? null,
+  };
+}
+
+/** The outputs of "cheapest hours": the window of `hours` in `period`. */
+export function cheapestWindowOutputs(slots, { period, hours, now, timeZone }) {
+  const nowIso = new Date(now).toISOString();
+  let candidates;
+  if (period === 'today') {
+    candidates = slotsOfDay(slots, localDate(now, timeZone), timeZone).filter(
+      (s) => s.endsAt > nowIso,
+    );
+  } else if (period === 'tomorrow') {
+    candidates = slotsOfDay(slots, localDate(now + DAY, timeZone), timeZone);
+  } else {
+    const limit = new Date(now + DAY).toISOString();
+    candidates = slots.filter((s) => s.endsAt && s.endsAt > nowIso && s.startsAt < limit);
+  }
+  const window = cheapestWindow(candidates, hours);
+  if (!window) {
+    return { found: false, period, hours };
+  }
+  const all = candidates.reduce((a, s) => a + s.price, 0) / candidates.length;
+  return {
+    found: true,
+    period,
+    hours,
+    start: window.start,
+    end: window.end,
+    start_time: time(window.start, timeZone),
+    end_time: time(window.end, timeZone),
+    minutes_until_start: Math.max(0, Math.round((Date.parse(window.start) - now) / 60_000)),
+    avg_price: window.avg,
+    saving_percent: all > 0 ? Math.round(((all - window.avg) / all) * 100) : 0,
+    currency: CURRENCY,
+  };
+}

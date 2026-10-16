@@ -1,67 +1,115 @@
-# Template de démonstration
+# Octopus Energy (Royaume-Uni)
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+**Connecteur non officiel, sans lien avec Octopus Energy.** Il amène votre
+compte Octopus Energy (Grande-Bretagne) dans Gladys : vos compteurs
+d'électricité et de gaz, leur consommation par demi-heure dans le suivi
+énergétique de Gladys, votre prix du kWh et votre abonnement journalier
+actuels, et les prix **Agile** publics avec des déclencheurs de scène « heures
+les moins chères ». Octopus Energy est une marque d'Octopus Energy Group.
+Pour Octopus Energy **France**, utilisez plutôt l'intégration Octopus Energy
+France : celle-ci ne parle qu'à l'API britannique.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+| Surface                                                   | Contenu                                                                                                                                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Un appareil par point de livraison **électricité** (MPAN) | la consommation par demi-heure pour le suivi énergétique, le prix du kWh actuel (£/kWh, TVA incluse) et l'abonnement (£/jour)                                                |
+| Un appareil par point de livraison **gaz** (MPRN)         | la même chose, la consommation de gaz convertie en kWh                                                                                                                       |
+| Un appareil **région Agile**                              | prix Agile actuel, prix suivant, moyenne, minimum et maximum du jour, un capteur « période la moins chère » et un capteur « prix négatif »                                   |
+| Déclencheurs de scène                                     | **début / fin de la période la moins chère** (les N heures les moins chères du jour), **début d'un prix négatif**, **prix de demain publiés** (vers 16 h, heure britannique) |
+| Actions de scène                                          | **prix actuel** et **heures les moins chères** (les N heures consécutives les moins chères des 24 prochaines heures, d'aujourd'hui ou de demain)                             |
+| Widget                                                    | **Prix Octopus** : maintenant, ensuite, moyennes, heures les moins chères, prix négatifs, courbe d'aujourd'hui et de demain                                                  |
+| Contrats d'énergie (Gladys 5.2+)                          | modèles **Octopus Energy électricité** et **gaz** : chaque demi-heure tarifée au prix du kWh de votre tarif à ce moment, plus l'abonnement                                   |
 
-## Configuration
+## Installation
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+1. Dans votre espace Octopus, ouvrez
+   [API access](https://octopus.energy/dashboard/new/accounts/personal-details/api-access) :
+   copiez la **clé d'API** (`sk_live_…`) et votre **numéro de compte**
+   (`A-XXXXXXXX`).
+2. Installez l'intégration, collez les deux, enregistrez, puis cliquez sur
+   **Tester la connexion** : vos compteurs, leur tarif et le prix Agile actuel
+   s'affichent.
+3. Ouvrez **Découverte** et ajoutez les appareils voulus (les compteurs, la
+   région Agile).
+4. Placez le widget **Prix Octopus** sur un tableau de bord et choisissez la
+   région Agile (ou un compteur à tarif par demi-heure).
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+**Sans compte Octopus**, laissez la clé vide et choisissez une **région des
+prix Agile** : vous obtenez l'appareil Agile public, ses déclencheurs et le
+widget. Avec un compte, « Automatique » prend la région de votre tarif
+d'électricité.
 
-## Actions
+## Suivi énergétique
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Les relevés des compteurs communicants arrivent chez Octopus avec du retard
+(souvent le lendemain). L'intégration publie donc des demi-heures **datées** :
+chaque relevé tombe dans sa propre demi-heure du suivi énergétique, même
+arrivé un jour plus tard. À l'ajout d'un compteur, les 14 derniers jours sont
+remplis ; ensuite les 3 derniers jours sont relus toutes les heures. Le gaz
+relevé en mètres cubes (SMETS2) est converti en kWh avec le pouvoir
+calorifique de la configuration (×1,02264 ÷ 3,6) ; choisissez kWh pour un
+compteur de gaz SMETS1.
+
+Pour voir les coûts, créez un contrat dans **Suivi de l'énergie → Contrats**
+depuis le modèle **Octopus Energy électricité** (ou **gaz**), rattachez-le à
+l'appareil du compteur et saisissez l'abonnement affiché par l'appareil.
+Gladys demande alors à l'intégration de tarifer chaque demi-heure depuis
+votre propre historique de tarifs, changements de tarif compris.
 
 ## Scènes
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+- **Début / fin de la période la moins chère** : la demi-heure actuelle entre
+  dans les N heures les moins chères du jour ou en sort (N = **Heures les
+  moins chères par jour**, 3 par défaut). Lancer le lave-vaisselle, la
+  recharge de la voiture, l'eau chaude.
+- **Début d'un prix négatif** : Agile vous paie pour consommer pendant cette
+  demi-heure.
+- **Prix de demain publiés** : une fois par jour, avec la moyenne, les
+  extrêmes, le nombre de demi-heures négatives et la fenêtre la moins chère.
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+Les actions de scène donnent leurs résultats aux actions suivantes de la
+scène, dans leur liste de variables (écrites `{{<étape>.<action>.<clé>}}`,
+par exemple `{{0.0.price}}`) : **prix actuel** donne `price`, `cheap`,
+`negative`, `next_price`, `avg_price`, `window_start_time`… ; **heures les
+moins chères** donne `start_time`, `end_time`, `start` et `end` (dates ISO
+pour un « attendre jusqu'à »), `minutes_until_start` et l'économie par
+rapport à la période.
 
-## Tableau de bord
+## Limites
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+- Grande-Bretagne uniquement (API d'Octopus Energy UK). L'Allemagne, l'Italie
+  et les autres pays Kraken ne sont pas couverts.
+- Les tarifs à deux prix (Economy 7) n'ont pas de prix du kWh unique : leur
+  fonctionnalité de prix reste vide et leur contrat ne peut pas encore être
+  tarifé.
+- Les compteurs d'injection (solaire) ne sont pas encore lus.
+- Un prix Agile négatif compte comme un coût nul dans les contrats (les coûts
+  de Gladys ne peuvent pas être négatifs).
+- Appels : le compte toutes les 6 heures, la consommation et le tarif de
+  chaque compteur toutes les heures, les prix Agile toutes les heures (et
+  toutes les 15 minutes après 16 h jusqu'à la publication de ceux de demain).
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Octopus a refusé la clé d'API ou le numéro de compte »** : recopiez-les
+  depuis la page API access ; une clé régénérée remplace l'ancienne.
+- **Pas de consommation** : vérifiez que l'appareil du compteur est créé ; les
+  données des compteurs communicants peuvent mettre un jour ou plus à
+  arriver chez Octopus.
+- **Pas d'appareil Agile** : choisissez une région, ou saisissez votre compte
+  pour que « Automatique » la lise dans votre tarif.
+- Logs : réglez la variable `LOG_LEVEL` de l'intégration.
+
+## Confidentialité
+
+La clé est stockée chiffrée par Gladys et envoyée uniquement à
+`api.octopus.energy`, et seulement pour les requêtes du compte et de la
+consommation (les tarifs et les prix Agile sont publics). Rien n'est
+journalisé avec la clé ou le numéro de compte.
+
+## Crédits
+
+La logique des tarifs et des compteurs suit
+[BottlecapDave/HomeAssistant-OctopusEnergy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy)
+(MIT, © 2021 David Kendall).

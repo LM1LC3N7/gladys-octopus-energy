@@ -12,44 +12,22 @@ the notes of the version's GitHub Release.
 
 ### Added
 
-- A working example of scene triggers, scene actions and dashboard widgets
-  (Gladys 5.1.0 or later).
-- `CHANGELOG.md`, rolled by the Release workflow.
-- A GitHub Release for every version, with its changelog section as notes: the
-  Gladys Supervision page links each version to the repository's releases.
-- CI runs the tests on Node 22 and 24, and builds the Docker image.
-- Dependabot keeps the npm dependencies and the GitHub Actions up to date.
-- `SECURITY.md` (how to report a vulnerability) and `CLAUDE.md` (project rules
-  for contributors and coding assistants).
-- Manifest tests: `version` matches `package.json`, `docker_image` is tagged
-  with it, descriptions hold 10 to 100 characters, placeholders are
-  multi-language objects.
-- The latitude and longitude fields show an example value as placeholder.
+- One device per Octopus Energy (Great Britain) electricity and gas meter
+  point: the 30-minute consumption fed, dated, to the Gladys energy
+  monitoring (14 days filled in when the device is added), the current unit
+  rate and the standing charge, VAT included. SMETS2 gas readings in cubic
+  metres are converted to kWh.
+- One device per Agile region with the public half-hourly prices (no account
+  needed): price now, next, today's average, minimum and maximum, "cheap
+  period" and "negative price" sensors. The region can follow the account's
+  tariff.
+- Scene triggers "cheap period started / ended", "negative price started" and
+  "tomorrow's prices published".
+- Scene actions "price now" and "cheapest hours".
+- Dashboard widget "Octopus prices" (curve of today and tomorrow).
+- Delegated energy contract templates for electricity and gas (Gladys 5.2+):
+  every half hour priced at the unit rate of the tariff in force then, plus
+  the daily standing charge.
+- "Test the connection" button.
 
-### Changed
-
-- Node.js 22 or later is required (Node 20 is end-of-life).
-- Integration SDK 0.15.0. The tests now run against the fake Gladys of the
-  SDK, which refuses the payloads Gladys refuses.
-- The refresh interval is one minute minimum, the fastest Gladys polls a
-  device. The plug's power is only sent when it changes, and every 30
-  minutes otherwise.
-
-### Fixed
-
-- Gladys refused the devices of the Discovery tab: the weather station and
-  the plug declared their poll frequency in seconds instead of one of the
-  values Gladys accepts, and were never polled. They now poll every minute,
-  and the readings follow the refresh interval of the configuration.
-
-- The release commit no longer fails `npm run format:check`: the Release
-  workflow updates the manifest `version` and `docker_image` in place instead
-  of re-printing the whole file with `jq`.
-- The integration can write to `/data`: the image creates the directory owned
-  by the `node` user, a new Docker volume was owned by root.
-- A sub-container running the integration's own image follows it to the new
-  tag at each release, as well as in the manifest of the build summary: it kept
-  the previous tag, which may not exist on the registry. Sub-containers on a
-  third-party image (a broker, a database...) keep theirs.
-
-[Unreleased]: https://github.com/GladysAssistant/integration-template-js/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-octopus-energy/commits/main

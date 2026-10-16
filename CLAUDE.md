@@ -11,13 +11,21 @@ Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
 its only runtime dependency. It started from the official JavaScript template.
 
+It reads **Octopus Energy Great Britain** through the official REST API
+(`api.octopus.energy/v1`, HTTP Basic with the account's API key): the meters
+of the account, their half-hourly consumption, their tariff, and the public
+Agile prices of a region. Unofficial: not affiliated with Octopus Energy.
+Sibling of `gladys-tibber` and `gladys-nord-pool` (same price model and scene
+vocabulary). France is out of scope (guim31/gladys-octopus-fr).
+
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/model.test.js            # one file
+node --test --test-name-pattern "Agile"   # tests whose name matches
+npm run audit                             # npm audit --omit=dev
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -32,12 +40,19 @@ pushing.
 
 ```
 index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+src/app.js                        OctopusApp: discovery, tariffs + Agile + tick, tomorrow,
+                                  consumption, scene actions, widget, delegated pricing
+src/octopus/api.js                the REST calls (the key only on account + consumption)
+src/octopus/model.js              tariff codes, meters, rates -> slots, Agile state, consumption (pure)
+src/devices.js                    the devices, feature keys, states (pure)
+src/triggers.js                   transitions -> scene events (pure)
+src/scenes.js                     scene action outputs (pure)
+src/energy.js                     interval costs from the tariff in force (pure)
+src/widget.js                     the "prices" widget (pure)
+src/config.js                     DEFAULTS (mirror the manifest defaults) + normalization
+src/constants.js                  endpoints, pacing, regions, manifest keys
+src/i18n.js                       runtime texts (en/fr)
+src/http.js                       the only HTTP access (GET JSON, pagination, errors)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
 docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
 test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
@@ -46,6 +61,13 @@ test/                             node --test, against the SDK's fake Gladys (in
 
 ## Rules
 
+- **Octopus keys are forever too**: the external ids `agile:<region>`,
+  `electricity:<MPAN>`, `gas:<MPRN>`, the `FEATURE` keys of `src/devices.js`,
+  the manifest keys of `src/constants.js` and the contract template keys
+  `octopus-gb-electricity` / `octopus-gb-gas`.
+- **Be polite with Octopus**: account every 6 h, consumption and tariffs every
+  hour, tomorrow's Agile prices every 15 min only after 16:00 UK time and only
+  until published. Never send the API key to the public endpoints.
 - **External ids are forever.** Build them with
   `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
   platform gives the device (serial, cloud id, MAC), never a label. Gladys keys

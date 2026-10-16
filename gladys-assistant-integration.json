@@ -1,177 +1,728 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Octopus Energy (UK)",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Unofficial: Octopus Energy UK meters, half-hourly use, tariffs and public Agile prices.",
+    "fr": "Non officiel : compteurs Octopus Energy UK, conso par demi-heure, tarifs et prix Agile publics."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
-  "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-octopus-energy:0.1.0",
+  "gladys_version": ">=5.2.0",
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-octopus-energy/main/cover.png",
+  "categories": ["energy"],
+  "transports": ["cloud"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Octopus Energy account (Great Britain)",
+        "fr": "Compte Octopus Energy (Grande-Bretagne)"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Unofficial connector, not affiliated with Octopus Energy. For Octopus Energy customers in Great Britain (for France, use the Octopus Energy France integration). Copy your API key and your account number (A-XXXXXXXX) from the \"API access\" page of your Octopus dashboard: the integration discovers your electricity and gas meters, feeds their half-hourly consumption to the Gladys energy monitoring and shows your current unit rate and standing charge. Without an account, choose an Agile region below to get the public Agile prices only.",
+        "fr": "Connecteur non officiel, sans lien avec Octopus Energy. Pour les clients d'Octopus Energy en Grande-Bretagne (en France, utilisez l'intégration Octopus Energy France). Copiez votre clé d'API et votre numéro de compte (A-XXXXXXXX) depuis la page « API access » de votre espace Octopus : l'intégration découvre vos compteurs d'électricité et de gaz, envoie leur consommation par demi-heure au suivi énergétique de Gladys et affiche votre prix du kWh et votre abonnement journalier. Sans compte, choisissez une région Agile ci-dessous pour n'avoir que les prix Agile publics."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://octopus.energy/dashboard/new/accounts/personal-details/api-access",
+          "label": {
+            "en": "Get your API key",
+            "fr": "Obtenir votre clé d'API"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-octopus-energy/blob/main/docs/fr.md",
+          "label": {
+            "en": "Guide (French)",
+            "fr": "Guide (français)"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-octopus-energy/blob/main/docs/en.md",
+          "label": {
+            "en": "Guide (English)",
+            "fr": "Guide (anglais)"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "key": "api_key",
+      "type": "secret",
       "required": false,
-      "default": "celsius",
+      "label": {
+        "en": "API key",
+        "fr": "Clé d'API"
+      },
+      "description": {
+        "en": "Starts with sk_live_. Stored encrypted by Gladys and only sent to api.octopus.energy. Leave empty for the public Agile prices only.",
+        "fr": "Commence par sk_live_. Stockée chiffrée par Gladys et envoyée uniquement à api.octopus.energy. Laissez vide pour n'avoir que les prix Agile publics."
+      }
+    },
+    {
+      "key": "account_number",
+      "type": "string",
+      "required": false,
+      "label": {
+        "en": "Account number",
+        "fr": "Numéro de compte"
+      },
+      "description": {
+        "en": "Shown on your bills and on the API access page.",
+        "fr": "Indiqué sur vos factures et sur la page « API access »."
+      },
+      "placeholder": {
+        "en": "e.g. A-1B2C3D4E",
+        "fr": "ex. A-1B2C3D4E"
+      }
+    },
+    {
+      "key": "agile_region",
+      "type": "select",
+      "required": false,
+      "default": "auto",
+      "label": {
+        "en": "Agile prices region",
+        "fr": "Région des prix Agile"
+      },
+      "description": {
+        "en": "The public half-hourly Agile prices of this region, with the cheap-hours triggers. \"Automatic\" uses the region of your electricity tariff.",
+        "fr": "Les prix Agile publics par demi-heure de cette région, avec les déclencheurs des heures les moins chères. « Automatique » prend la région de votre tarif d'électricité."
+      },
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "auto",
+          "label": { "en": "Automatic (from my tariff)", "fr": "Automatique (depuis mon tarif)" }
+        },
+        { "value": "off", "label": { "en": "None", "fr": "Aucune" } },
+        { "value": "A", "label": { "en": "A: Eastern England", "fr": "A : est de l'Angleterre" } },
+        { "value": "B", "label": { "en": "B: East Midlands", "fr": "B : East Midlands" } },
+        { "value": "C", "label": { "en": "C: London", "fr": "C : Londres" } },
+        {
+          "value": "D",
+          "label": {
+            "en": "D: Merseyside and Northern Wales",
+            "fr": "D : Merseyside et nord du pays de Galles"
+          }
+        },
+        { "value": "E", "label": { "en": "E: West Midlands", "fr": "E : West Midlands" } },
+        {
+          "value": "F",
+          "label": { "en": "F: North Eastern England", "fr": "F : nord-est de l'Angleterre" }
+        },
+        {
+          "value": "G",
+          "label": { "en": "G: North Western England", "fr": "G : nord-ouest de l'Angleterre" }
+        },
+        { "value": "H", "label": { "en": "H: Southern England", "fr": "H : sud de l'Angleterre" } },
+        {
+          "value": "J",
+          "label": { "en": "J: South Eastern England", "fr": "J : sud-est de l'Angleterre" }
+        },
+        { "value": "K", "label": { "en": "K: Southern Wales", "fr": "K : sud du pays de Galles" } },
+        {
+          "value": "L",
+          "label": { "en": "L: South Western England", "fr": "L : sud-ouest de l'Angleterre" }
+        },
+        { "value": "M", "label": { "en": "M: Yorkshire", "fr": "M : Yorkshire" } },
+        { "value": "N", "label": { "en": "N: Southern Scotland", "fr": "N : sud de l'Écosse" } },
+        { "value": "P", "label": { "en": "P: Northern Scotland", "fr": "P : nord de l'Écosse" } }
       ]
     },
     {
-      "key": "poll_frequency",
+      "key": "cheap_hours",
       "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
-      "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
-      },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": 3,
+      "min": 0.5,
+      "max": 12,
+      "label": {
+        "en": "Cheap hours per day",
+        "fr": "Heures les moins chères par jour"
+      },
+      "description": {
+        "en": "The N cheapest hours of the day (by half hours) make the Agile \"cheap period\" (sensor, triggers, widget).",
+        "fr": "Les N heures les moins chères de la journée (par demi-heures) forment la « période la moins chère » Agile (capteur, déclencheurs, widget)."
+      }
+    },
+    {
+      "key": "gas_unit",
+      "type": "select",
+      "required": false,
+      "default": "m3",
+      "label": {
+        "en": "Unit of the gas meter readings",
+        "fr": "Unité des relevés du compteur de gaz"
+      },
+      "description": {
+        "en": "SMETS2 smart gas meters report cubic metres, converted to kWh; SMETS1 meters report kWh.",
+        "fr": "Les compteurs de gaz communicants SMETS2 relèvent des mètres cubes, convertis en kWh ; les SMETS1 relèvent des kWh."
+      },
+      "options": [
+        {
+          "value": "m3",
+          "label": { "en": "Cubic metres (SMETS2)", "fr": "Mètres cubes (SMETS2)" }
+        },
+        { "value": "kwh", "label": { "en": "kWh (SMETS1)", "fr": "kWh (SMETS1)" } }
+      ]
+    },
+    {
+      "key": "gas_calorific_value",
+      "type": "number",
+      "required": false,
+      "default": 40,
+      "min": 30,
+      "max": 50,
+      "label": {
+        "en": "Gas calorific value (MJ/m³)",
+        "fr": "Pouvoir calorifique du gaz (MJ/m³)"
+      },
+      "description": {
+        "en": "Printed on your gas bill (about 39 to 40). Only used for meters read in cubic metres.",
+        "fr": "Indiqué sur votre facture de gaz (environ 39 à 40). Sert uniquement aux compteurs relevés en mètres cubes."
+      }
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
+      "key": "test_connection",
+      "timeout_seconds": 30,
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion"
+      },
+      "description": {
+        "en": "Reads the account, its meters and tariffs, and the current Agile price.",
+        "fr": "Lit le compte, ses compteurs et tarifs, et le prix Agile actuel."
+      }
+    }
+  ],
+  "widgets": [
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
+      "key": "prices",
+      "label": {
+        "en": "Octopus prices",
+        "fr": "Prix Octopus"
+      },
+      "description": {
+        "en": "Now, next, today's and tomorrow's average, the cheapest hours, negative prices and the price curve.",
+        "fr": "Maintenant, ensuite, moyennes du jour et de demain, heures creuses, prix négatifs et courbe."
+      },
+      "icon": "trending-down",
+      "settings": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "required": true,
+          "label": {
+            "en": "Agile region or meter",
+            "fr": "Région Agile ou compteur"
+          }
         }
       ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "cheap_period_started",
+      "label": {
+        "en": "Octopus Agile cheap period started",
+        "fr": "Début de la période la moins chère Octopus Agile"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "The current half hour is one of the cheapest hours of the day (see \"Cheap hours per day\").",
+        "fr": "La demi-heure actuelle fait partie des heures les moins chères de la journée (voir « Heures les moins chères par jour »)."
       },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
+          "required": true,
+          "label": {
+            "en": "Agile region",
+            "fr": "Région Agile"
+          }
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "price",
+          "type": "number",
+          "label": { "en": "Price per kWh", "fr": "Prix par kWh" }
+        },
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } },
+        {
+          "key": "ends_at",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": { "en": "End of the slot", "fr": "Fin du créneau" }
+        }
+      ]
+    },
+    {
+      "key": "cheap_period_ended",
+      "label": {
+        "en": "Octopus Agile cheap period ended",
+        "fr": "Fin de la période la moins chère Octopus Agile"
+      },
+      "description": {
+        "en": "The current half hour is no longer one of the cheapest hours of the day.",
+        "fr": "La demi-heure actuelle ne fait plus partie des heures les moins chères de la journée."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": true,
+          "label": {
+            "en": "Agile region",
+            "fr": "Région Agile"
+          }
+        }
+      ],
+      "variables": [
+        {
+          "key": "price",
+          "type": "number",
+          "label": { "en": "Price per kWh", "fr": "Prix par kWh" }
+        },
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } },
+        {
+          "key": "ends_at",
+          "type": "string",
+          "label": { "en": "End of the slot", "fr": "Fin du créneau" }
+        }
+      ]
+    },
+    {
+      "key": "negative_price_started",
+      "label": {
+        "en": "Octopus Agile negative price started",
+        "fr": "Début d'un prix négatif Octopus Agile"
+      },
+      "description": {
+        "en": "The Agile price of the current half hour is below zero (\"plunge pricing\"): you are paid to use electricity.",
+        "fr": "Le prix Agile de la demi-heure actuelle est sous zéro (« plunge pricing ») : vous êtes payé pour consommer."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": true,
+          "label": {
+            "en": "Agile region",
+            "fr": "Région Agile"
+          }
+        }
+      ],
+      "variables": [
+        {
+          "key": "price",
+          "type": "number",
+          "label": { "en": "Price per kWh", "fr": "Prix par kWh" }
+        },
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } },
+        {
+          "key": "ends_at",
+          "type": "string",
+          "label": { "en": "End of the slot", "fr": "Fin du créneau" }
+        }
+      ]
+    },
+    {
+      "key": "tomorrow_prices_published",
+      "label": {
+        "en": "Octopus Agile tomorrow's prices published",
+        "fr": "Prix Octopus Agile de demain publiés"
+      },
+      "description": {
+        "en": "Tomorrow's Agile prices just appeared (around 16:00 UK time), with the average, the extremes and the cheapest window.",
+        "fr": "Les prix Agile de demain viennent d'apparaître (vers 16 h, heure du Royaume-Uni), avec la moyenne, les extrêmes et la fenêtre la moins chère."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": true,
+          "label": {
+            "en": "Agile region",
+            "fr": "Région Agile"
+          }
+        }
+      ],
+      "variables": [
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } },
+        {
+          "key": "average",
+          "type": "number",
+          "label": { "en": "Average price", "fr": "Prix moyen" }
+        },
+        {
+          "key": "min",
+          "type": "number",
+          "label": { "en": "Minimum price", "fr": "Prix minimum" }
+        },
+        {
+          "key": "max",
+          "type": "number",
+          "label": { "en": "Maximum price", "fr": "Prix maximum" }
+        },
+        {
+          "key": "negative_slots",
+          "type": "number",
+          "label": { "en": "Half hours below zero", "fr": "Demi-heures sous zéro" }
+        },
+        {
+          "key": "cheapest_start",
+          "type": "string",
+          "label": {
+            "en": "Cheapest window start (ISO)",
+            "fr": "Début de la fenêtre la moins chère (ISO)"
+          }
+        },
+        {
+          "key": "cheapest_end",
+          "type": "string",
+          "label": {
+            "en": "Cheapest window end (ISO)",
+            "fr": "Fin de la fenêtre la moins chère (ISO)"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "get_price",
+      "label": {
+        "en": "Octopus price now",
+        "fr": "Prix Octopus actuel"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "The current Agile price or unit rate, whether it is in the cheap hours, the next price, today's figures and the cheapest window, for a condition or a message.",
+        "fr": "Le prix Agile ou du kWh actuel, s'il est dans les heures les moins chères, le prix suivant, les chiffres du jour et la fenêtre la moins chère, pour une condition ou un message."
+      },
+      "timeout_seconds": 10,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "required": true,
+          "label": {
+            "en": "Agile region or meter",
+            "fr": "Région Agile ou compteur"
+          }
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
+          "key": "available",
           "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "label": { "en": "Price known", "fr": "Prix connu" }
+        },
+        {
+          "key": "price",
+          "type": "number",
+          "label": { "en": "Price per kWh", "fr": "Prix par kWh" }
+        },
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } },
+        {
+          "key": "cheap",
+          "type": "boolean",
+          "label": { "en": "In the cheap hours", "fr": "Dans les heures les moins chères" }
+        },
+        {
+          "key": "negative",
+          "type": "boolean",
+          "label": { "en": "Negative price", "fr": "Prix négatif" }
+        },
+        {
+          "key": "ends_at",
+          "type": "string",
+          "label": { "en": "End of the slot (ISO)", "fr": "Fin du créneau (ISO)" }
+        },
+        {
+          "key": "ends_time",
+          "type": "string",
+          "label": {
+            "en": "End of the slot (UK time)",
+            "fr": "Fin du créneau (heure du Royaume-Uni)"
+          }
+        },
+        {
+          "key": "next_price",
+          "type": "number",
+          "label": { "en": "Next price", "fr": "Prix suivant" }
+        },
+        {
+          "key": "avg_price",
+          "type": "number",
+          "label": { "en": "Today's average", "fr": "Moyenne du jour" }
+        },
+        {
+          "key": "min_price",
+          "type": "number",
+          "label": { "en": "Today's minimum", "fr": "Minimum du jour" }
+        },
+        {
+          "key": "max_price",
+          "type": "number",
+          "label": { "en": "Today's maximum", "fr": "Maximum du jour" }
+        },
+        {
+          "key": "tomorrow_published",
+          "type": "boolean",
+          "label": { "en": "Tomorrow's prices published", "fr": "Prix de demain publiés" }
+        },
+        {
+          "key": "tomorrow_avg_price",
+          "type": "number",
+          "label": { "en": "Tomorrow's average", "fr": "Moyenne de demain" }
+        },
+        {
+          "key": "window_start_time",
+          "type": "string",
+          "label": {
+            "en": "Cheapest window start (UK time)",
+            "fr": "Début de la fenêtre la moins chère (heure du Royaume-Uni)"
+          }
+        },
+        {
+          "key": "window_end_time",
+          "type": "string",
+          "label": {
+            "en": "Cheapest window end (UK time)",
+            "fr": "Fin de la fenêtre la moins chère (heure du Royaume-Uni)"
+          }
+        },
+        {
+          "key": "standing_charge",
+          "type": "number",
+          "label": {
+            "en": "Standing charge per day (meter)",
+            "fr": "Abonnement par jour (compteur)"
+          }
         }
+      ]
+    },
+    {
+      "key": "cheapest_window",
+      "label": {
+        "en": "Octopus cheapest hours",
+        "fr": "Heures Octopus les moins chères"
+      },
+      "description": {
+        "en": "The start and end of the cheapest N consecutive hours of a period (Agile or another half-hourly tariff), to wait for them or announce them.",
+        "fr": "Le début et la fin des N heures consécutives les moins chères d'une période (Agile ou autre tarif par demi-heure), pour les attendre ou les annoncer."
+      },
+      "timeout_seconds": 10,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": true,
+          "label": {
+            "en": "Agile region or meter",
+            "fr": "Région Agile ou compteur"
+          }
+        },
+        {
+          "key": "hours",
+          "type": "number",
+          "required": false,
+          "min": 0.5,
+          "max": 12,
+          "label": {
+            "en": "Hours (empty: the configured cheap hours)",
+            "fr": "Heures (vide : les heures configurées)"
+          }
+        },
+        {
+          "key": "period",
+          "type": "select",
+          "required": false,
+          "default": "next_24h",
+          "label": {
+            "en": "Period",
+            "fr": "Période"
+          },
+          "options": [
+            {
+              "value": "next_24h",
+              "label": { "en": "The next 24 hours", "fr": "Les 24 prochaines heures" }
+            },
+            {
+              "value": "today",
+              "label": { "en": "The rest of today", "fr": "Le reste d'aujourd'hui" }
+            },
+            { "value": "tomorrow", "label": { "en": "Tomorrow", "fr": "Demain" } }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "type": "boolean",
+          "label": { "en": "A window was found", "fr": "Une fenêtre a été trouvée" }
+        },
+        { "key": "start", "type": "string", "label": { "en": "Start (ISO)", "fr": "Début (ISO)" } },
+        { "key": "end", "type": "string", "label": { "en": "End (ISO)", "fr": "Fin (ISO)" } },
+        {
+          "key": "start_time",
+          "type": "string",
+          "label": { "en": "Start (UK time)", "fr": "Début (heure du Royaume-Uni)" }
+        },
+        {
+          "key": "end_time",
+          "type": "string",
+          "label": { "en": "End (UK time)", "fr": "Fin (heure du Royaume-Uni)" }
+        },
+        {
+          "key": "minutes_until_start",
+          "type": "number",
+          "label": { "en": "Minutes until the start", "fr": "Minutes avant le début" }
+        },
+        {
+          "key": "avg_price",
+          "type": "number",
+          "label": { "en": "Average price of the window", "fr": "Prix moyen de la fenêtre" }
+        },
+        {
+          "key": "saving_percent",
+          "type": "number",
+          "label": {
+            "en": "Saving against the period average (%)",
+            "fr": "Économie par rapport à la moyenne de la période (%)"
+          }
+        },
+        { "key": "currency", "type": "string", "label": { "en": "Currency", "fr": "Devise" } }
       ]
     }
   ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+  "energy_contracts": {
+    "templates": [
+      {
+        "key": "octopus-gb-electricity",
+        "name": {
+          "en": "Octopus Energy electricity (Great Britain)",
+          "fr": "Octopus Energy électricité (Grande-Bretagne)"
+        },
+        "description": {
+          "en": "Your Octopus electricity tariff read from your account (Agile, Go, Flexible, fixed...): every half hour priced at the unit rate in force then, VAT included, plus the daily standing charge.",
+          "fr": "Votre tarif d'électricité Octopus lu depuis votre compte (Agile, Go, Flexible, fixe...) : chaque demi-heure tarifée au prix du kWh en vigueur, TVA incluse, plus l'abonnement journalier."
+        },
+        "country": "GB",
+        "currency": "GBP",
+        "timezone": "Europe/London",
+        "pricing_mode": "delegated",
+        "version": "2026-10-16",
+        "inputs": [
+          {
+            "key": "meter_point",
+            "type": "string",
+            "required": false,
+            "label": {
+              "en": "MPAN (empty: the first electricity meter)",
+              "fr": "MPAN (vide : le premier compteur d'électricité)"
+            },
+            "description": {
+              "en": "Shown in the device params and by the test button; only needed with several meters.",
+              "fr": "Visible dans les paramètres de l'appareil et par le bouton de test ; utile seulement avec plusieurs compteurs."
+            }
+          },
+          {
+            "key": "standing_charge",
+            "type": "number",
+            "unit": "GBP/day",
+            "default": 0,
+            "label": {
+              "en": "Standing charge per day",
+              "fr": "Abonnement par jour"
+            },
+            "description": {
+              "en": "Shown by the \"Standing charge per day\" feature of the meter device, VAT included.",
+              "fr": "Affiché par la fonctionnalité « Standing charge per day » de l'appareil du compteur, TVA incluse."
+            }
+          }
+        ],
+        "tariff": {
+          "tariff_version": 1,
+          "components": [
+            {
+              "key": "standing_charge",
+              "kind": "fixed",
+              "label": "Standing charge",
+              "amount": "{{input:standing_charge}}",
+              "per": "day"
+            }
+          ]
+        }
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
-    }
-  ]
+      {
+        "key": "octopus-gb-gas",
+        "name": {
+          "en": "Octopus Energy gas (Great Britain)",
+          "fr": "Octopus Energy gaz (Grande-Bretagne)"
+        },
+        "description": {
+          "en": "Your Octopus gas tariff read from your account (Tracker, Flexible, fixed...): every half hour priced at the unit rate in force then, VAT included, plus the daily standing charge.",
+          "fr": "Votre tarif de gaz Octopus lu depuis votre compte (Tracker, Flexible, fixe...) : chaque demi-heure tarifée au prix du kWh en vigueur, TVA incluse, plus l'abonnement journalier."
+        },
+        "country": "GB",
+        "currency": "GBP",
+        "timezone": "Europe/London",
+        "pricing_mode": "delegated",
+        "version": "2026-10-16",
+        "inputs": [
+          {
+            "key": "meter_point",
+            "type": "string",
+            "required": false,
+            "label": {
+              "en": "MPRN (empty: the first gas meter)",
+              "fr": "MPRN (vide : le premier compteur de gaz)"
+            },
+            "description": {
+              "en": "Shown in the device params and by the test button; only needed with several meters.",
+              "fr": "Visible dans les paramètres de l'appareil et par le bouton de test ; utile seulement avec plusieurs compteurs."
+            }
+          },
+          {
+            "key": "standing_charge",
+            "type": "number",
+            "unit": "GBP/day",
+            "default": 0,
+            "label": {
+              "en": "Standing charge per day",
+              "fr": "Abonnement par jour"
+            },
+            "description": {
+              "en": "Shown by the \"Standing charge per day\" feature of the meter device, VAT included.",
+              "fr": "Affiché par la fonctionnalité « Standing charge per day » de l'appareil du compteur, TVA incluse."
+            }
+          }
+        ],
+        "tariff": {
+          "tariff_version": 1,
+          "components": [
+            {
+              "key": "standing_charge",
+              "kind": "fixed",
+              "label": "Standing charge",
+              "amount": "{{input:standing_charge}}",
+              "per": "day"
+            }
+          ]
+        }
+      }
+    ]
+  }
 }
