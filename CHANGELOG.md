@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-16
+
 ### Fixed
 
 - Configuration and docs: the API key and the account number are kept by
@@ -45,5 +47,6 @@ the notes of the version's GitHub Release.
   the daily standing charge.
 - "Test the connection" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-octopus-energy/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-octopus-energy/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-octopus-energy/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-octopus-energy/releases/tag/v0.1.1
