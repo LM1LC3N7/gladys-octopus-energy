@@ -329,9 +329,24 @@ export function priceState(slots, t, { timeZone, cheapHours }) {
 export const gasKwh = (m3, calorificValue) => (m3 * GAS_VOLUME_CORRECTION * calorificValue) / 3.6;
 
 /**
- * Octopus consumption results -> 30-minute intervals for
- * publishEnergyConsumption: elapsed, aligned, finite, in kWh (gas read in m³
- * on SMETS2 meters is converted).
+ * The kWh of a local day [from, to) from 30-minute intervals, or null while
+ * the day is incomplete (Octopus readings arrive late: a partial total would
+ * look like a low day).
+ */
+export function dayTotal(intervals, from, to) {
+  const inDay = intervals.filter((i) => {
+    const t = Date.parse(i.starts_at);
+    return t >= from && t < to;
+  });
+  if (inDay.length < Math.round((to - from) / HALF_HOUR)) {
+    return null;
+  }
+  return Math.round(inDay.reduce((sum, i) => sum + i.kwh, 0) * 1000) / 1000;
+}
+
+/**
+ * Octopus consumption results -> 30-minute intervals in kWh: elapsed,
+ * aligned, finite (gas read in m³ on SMETS2 meters is converted).
  */
 export function consumptionIntervals(results = [], { now, gasM3 = false, calorificValue = 40 }) {
   const byStart = new Map();

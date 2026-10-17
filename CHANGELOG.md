@@ -10,6 +10,20 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Gas was counted as electricity: its consumption was attached to the main
+  electricity meter of the energy monitoring and priced at the electricity
+  rate (the Gladys core does not handle gas contracts yet). The gas device
+  now stays out of the energy monitoring and shows "Gas used yesterday
+  (kWh)" with its unit rate and standing charge. **Existing gas devices
+  change only after "Update" in the integration's Discovery tab.**
+
+### Removed
+
+- The "Octopus Energy gas" contract template: the core refuses gas
+  contracts, and a contract made from it priced electricity at the gas rate.
+
 ## [0.1.2] - 2026-10-16
 
 ### Fixed

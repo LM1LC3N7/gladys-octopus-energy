@@ -2,9 +2,9 @@
 
 **Connecteur non officiel, sans lien avec Octopus Energy.** Il amène votre
 compte Octopus Energy (Grande-Bretagne) dans Gladys : vos compteurs
-d'électricité et de gaz, leur consommation par demi-heure dans le suivi
-énergétique de Gladys, votre prix du kWh et votre abonnement journalier
-actuels, et les prix **Agile** publics avec des déclencheurs de scène « heures
+d'électricité et de gaz, la consommation d'électricité par demi-heure dans le
+suivi énergétique de Gladys, le gaz consommé la veille, vos prix du kWh et
+abonnements journaliers actuels, et les prix **Agile** publics avec des déclencheurs de scène « heures
 les moins chères ». Octopus Energy est une marque d'Octopus Energy Group.
 Pour Octopus Energy **France**, utilisez plutôt l'intégration Octopus Energy
 France : celle-ci ne parle qu'à l'API britannique.
@@ -14,12 +14,12 @@ France : celle-ci ne parle qu'à l'API britannique.
 | Surface                                                   | Contenu                                                                                                                                                                      |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Un appareil par point de livraison **électricité** (MPAN) | la consommation par demi-heure pour le suivi énergétique, le prix du kWh actuel (£/kWh, TVA incluse) et l'abonnement (£/jour)                                                |
-| Un appareil par point de livraison **gaz** (MPRN)         | la même chose, la consommation de gaz convertie en kWh                                                                                                                       |
+| Un appareil par point de livraison **gaz** (MPRN)         | le gaz consommé la veille en kWh (un simple capteur, **hors** suivi énergétique : voir plus bas), le prix du kWh actuel et l'abonnement                                      |
 | Un appareil **région Agile**                              | prix Agile actuel, prix suivant, moyenne, minimum et maximum du jour, un capteur « période la moins chère » et un capteur « prix négatif »                                   |
 | Déclencheurs de scène                                     | **début / fin de la période la moins chère** (les N heures les moins chères du jour), **début d'un prix négatif**, **prix de demain publiés** (vers 16 h, heure britannique) |
 | Actions de scène                                          | **prix actuel** et **heures les moins chères** (les N heures consécutives les moins chères des 24 prochaines heures, d'aujourd'hui ou de demain)                             |
 | Widget                                                    | **Prix Octopus** : maintenant, ensuite, moyennes, heures les moins chères, prix négatifs, courbe d'aujourd'hui et de demain                                                  |
-| Contrats d'énergie (Gladys 5.2+)                          | modèles **Octopus Energy électricité** et **gaz** : chaque demi-heure tarifée au prix du kWh de votre tarif à ce moment, plus l'abonnement                                   |
+| Contrat d'énergie (Gladys 5.2+)                           | modèle **Octopus Energy électricité** : chaque demi-heure tarifée au prix du kWh de votre tarif à ce moment, plus l'abonnement                                               |
 
 ## Installation
 
@@ -46,25 +46,35 @@ Les relevés des compteurs communicants arrivent chez Octopus avec du retard
 (souvent le lendemain). L'intégration publie donc des demi-heures **datées** :
 chaque relevé tombe dans sa propre demi-heure du suivi énergétique, même
 arrivé un jour plus tard. Seuls les compteurs dont vous avez créé l'appareil
-sont lus. À l'ajout d'un appareil de compteur, les 14 derniers jours sont
-remplis aussitôt ; ensuite les 3 derniers jours sont relus toutes les heures,
-et les 14 jours une fois par jour (après 4 h, heure britannique) pour les
-relevés qu'Octopus complète en retard. Le gaz relevé en mètres cubes (SMETS2)
-est converti en kWh avec le pouvoir calorifique de la configuration
-(×1,02264 ÷ 3,6) ; choisissez kWh pour un compteur de gaz SMETS1. **Après un
-changement de compteur de gaz** (nouveau numéro de série), revérifiez
-**Unité des relevés du compteur de gaz** : un SMETS1 remplacé par un SMETS2
-passe des kWh aux mètres cubes.
+sont lus. À l'ajout d'un appareil de compteur d'électricité, les 14 derniers
+jours sont remplis aussitôt ; ensuite les 3 derniers jours sont relus toutes
+les heures, et les 14 jours une fois par jour (après 4 h, heure britannique)
+pour les relevés qu'Octopus complète en retard.
 
-Pour voir les coûts, créez un contrat dans **Suivi de l'énergie → Contrats** :
+**Le gaz n'est pas dans l'onglet énergie** tant que le cœur de Gladys ne gère
+pas les contrats gaz : le cœur ajouterait toute consommation de gaz au
+compteur d'électricité principal et la chiffrerait au prix de l'électricité.
+L'appareil gaz affiche donc seulement **Gas used yesterday (kWh)** (le gaz
+consommé la veille), une fois la journée complète, avec son prix du kWh et
+son abonnement ; il ne change rien à votre suivi énergétique ni à vos coûts.
+Le gaz relevé en mètres cubes (SMETS2) est converti en kWh avec le pouvoir
+calorifique de la configuration (×1,02264 ÷ 3,6) ; choisissez kWh pour un
+compteur de gaz SMETS1. **Après un changement de compteur de gaz** (nouveau
+numéro de série), revérifiez **Unité des relevés du compteur de gaz** : un
+SMETS1 remplacé par un SMETS2 passe des kWh aux mètres cubes.
 
-- depuis le modèle **Octopus Energy électricité**, rattaché à l'appareil du
-  compteur d'**électricité** ;
-- depuis le modèle **Octopus Energy gaz**, rattaché à l'appareil du compteur
-  de **gaz** (jamais à celui d'électricité : les coûts du gaz se mêleraient à
-  ceux de l'électricité).
+**Vous aviez déjà un appareil gaz avec la version 0.1.2 ou antérieure ?** Son
+ancienne fonctionnalité « Consumption (30 min) » était comptée comme de
+l'électricité. Ouvrez **Intégrations → Octopus Energy → Découverte** et
+cliquez sur **Mettre à jour** sur l'appareil gaz : l'ancienne fonctionnalité
+est remplacée par « Gas used yesterday (kWh) ». Tant que vous ne le faites
+pas, Gladys garde l'ancienne fonctionnalité (qui ne reçoit plus rien).
+Supprimez aussi tout contrat créé depuis l'ancien modèle **Octopus Energy
+gaz** : il n'est plus proposé ni tarifé.
 
-Saisissez l'abonnement affiché par l'appareil. Gladys demande alors à
+Pour voir les coûts de l'électricité, créez un contrat dans **Suivi de
+l'énergie → Contrats** depuis le modèle **Octopus Energy électricité**,
+rattaché à l'appareil du compteur d'**électricité**. Saisissez l'abonnement affiché par l'appareil. Gladys demande alors à
 l'intégration de tarifer chaque demi-heure depuis votre propre historique de
 tarifs, changements de tarif compris ; une demi-heure hors de tout contrat du
 compte (juste avant le premier, par exemple) prend le contrat le plus proche.

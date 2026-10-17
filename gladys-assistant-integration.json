@@ -21,8 +21,8 @@
         "fr": "Compte Octopus Energy (Grande-Bretagne)"
       },
       "description": {
-        "en": "Unofficial connector, not affiliated with Octopus Energy. For Octopus Energy customers in Great Britain (for France, use the Octopus Energy France integration). Copy your API key and your account number (A-XXXXXXXX) from the \"API access\" page of your Octopus dashboard: the integration discovers your electricity and gas meters, feeds their half-hourly consumption to the Gladys energy monitoring and shows your current unit rate and standing charge. Without an account, choose an Agile region below to get the public Agile prices only.",
-        "fr": "Connecteur non officiel, sans lien avec Octopus Energy. Pour les clients d'Octopus Energy en Grande-Bretagne (en France, utilisez l'intégration Octopus Energy France). Copiez votre clé d'API et votre numéro de compte (A-XXXXXXXX) depuis la page « API access » de votre espace Octopus : l'intégration découvre vos compteurs d'électricité et de gaz, envoie leur consommation par demi-heure au suivi énergétique de Gladys et affiche votre prix du kWh et votre abonnement journalier. Sans compte, choisissez une région Agile ci-dessous pour n'avoir que les prix Agile publics."
+        "en": "Unofficial connector, not affiliated with Octopus Energy. For Octopus Energy customers in Great Britain (for France, use the Octopus Energy France integration). Copy your API key and your account number (A-XXXXXXXX) from the \"API access\" page of your Octopus dashboard: the integration discovers your electricity and gas meters, feeds the half-hourly electricity consumption to the Gladys energy monitoring, shows yesterday's gas use (outside the energy monitoring, which does not handle gas yet) and your current unit rates and standing charges. Without an account, choose an Agile region below to get the public Agile prices only.",
+        "fr": "Connecteur non officiel, sans lien avec Octopus Energy. Pour les clients d'Octopus Energy en Grande-Bretagne (en France, utilisez l'intégration Octopus Energy France). Copiez votre clé d'API et votre numéro de compte (A-XXXXXXXX) depuis la page « API access » de votre espace Octopus : l'intégration découvre vos compteurs d'électricité et de gaz, envoie la consommation d'électricité par demi-heure au suivi énergétique de Gladys, affiche le gaz consommé la veille (hors suivi énergétique, qui ne gère pas encore le gaz) et vos prix du kWh et abonnements journaliers. Sans compte, choisissez une région Agile ci-dessous pour n'avoir que les prix Agile publics."
       },
       "links": [
         {
@@ -632,63 +632,6 @@
             "label": {
               "en": "MPAN (empty: the first electricity meter)",
               "fr": "MPAN (vide : le premier compteur d'électricité)"
-            },
-            "description": {
-              "en": "Shown in the device params and by the test button; only needed with several meters.",
-              "fr": "Visible dans les paramètres de l'appareil et par le bouton de test ; utile seulement avec plusieurs compteurs."
-            }
-          },
-          {
-            "key": "standing_charge",
-            "type": "number",
-            "unit": "GBP/day",
-            "default": 0,
-            "label": {
-              "en": "Standing charge per day",
-              "fr": "Abonnement par jour"
-            },
-            "description": {
-              "en": "Shown by the \"Standing charge per day\" feature of the meter device, VAT included.",
-              "fr": "Affiché par la fonctionnalité « Standing charge per day » de l'appareil du compteur, TVA incluse."
-            }
-          }
-        ],
-        "tariff": {
-          "tariff_version": 1,
-          "components": [
-            {
-              "key": "standing_charge",
-              "kind": "fixed",
-              "label": "Standing charge",
-              "amount": "{{input:standing_charge}}",
-              "per": "day"
-            }
-          ]
-        }
-      },
-      {
-        "key": "octopus-gb-gas",
-        "name": {
-          "en": "Octopus Energy gas (Great Britain)",
-          "fr": "Octopus Energy gaz (Grande-Bretagne)"
-        },
-        "description": {
-          "en": "Your Octopus gas tariff read from your account (Tracker, Flexible, fixed...): every half hour priced at the unit rate in force then, VAT included, plus the daily standing charge.",
-          "fr": "Votre tarif de gaz Octopus lu depuis votre compte (Tracker, Flexible, fixe...) : chaque demi-heure tarifée au prix du kWh en vigueur, TVA incluse, plus l'abonnement journalier."
-        },
-        "country": "GB",
-        "currency": "GBP",
-        "timezone": "Europe/London",
-        "pricing_mode": "delegated",
-        "version": "2026-10-16",
-        "inputs": [
-          {
-            "key": "meter_point",
-            "type": "string",
-            "required": false,
-            "label": {
-              "en": "MPRN (empty: the first gas meter)",
-              "fr": "MPRN (vide : le premier compteur de gaz)"
             },
             "description": {
               "en": "Shown in the device params and by the test button; only needed with several meters.",

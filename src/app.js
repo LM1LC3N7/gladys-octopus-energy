@@ -34,6 +34,7 @@ import {
   buildMeterDevice,
   ids,
   parseExternalId,
+  gasYesterdayStates,
   tariffStates,
 } from './devices.js';
 import { intervalCosts, tariffRanges } from './energy.js';
@@ -43,6 +44,7 @@ import { OctopusClient } from './octopus/api.js';
 import {
   agileTariffCode,
   consumptionIntervals,
+  dayTotal,
   localClock,
   localDate,
   localTimeOn,
@@ -311,6 +313,7 @@ export class OctopusApp {
           price: previous?.price,
           standingCharge: previous?.standingCharge,
           backfilledOn: previous?.backfilledOn,
+          gasDay: previous?.gasDay,
         });
       }
     }
@@ -642,6 +645,10 @@ export class OctopusApp {
     if (!this.isCreated(entry)) {
       return;
     }
+    if (entry.meter.kind === KIND.GAS) {
+      await this.consumeGas(entry);
+      return;
+    }
     const now = this.now();
     const day = this.backfillDay(now);
     const days = entry.backfilledOn === day ? CONSUMPTION_DAYS : BACKFILL_DAYS;
@@ -656,11 +663,7 @@ export class OctopusApp {
       this.logger.warn(`Consumption of ${entry.name} unavailable: ${err.message}`);
       return;
     }
-    const intervals = consumptionIntervals(results, {
-      now,
-      gasM3: entry.meter.kind === KIND.GAS && this.config.gasUnit === 'm3',
-      calorificValue: this.config.gasCalorificValue,
-    });
+    const intervals = consumptionIntervals(results, { now });
     try {
       for (let i = 0; i < intervals.length; i += MAX_INTERVALS_PER_CALL) {
         await this.gladys.publishEnergyConsumption(
@@ -676,6 +679,45 @@ export class OctopusApp {
     }
   }
 
+  /**
+   * Gas: never published to the energy monitoring (the core would count it
+   * as electricity). Only yesterday's kWh, once the day is complete, as a
+   * plain sensor.
+   */
+  async consumeGas(entry) {
+    const now = this.now();
+    const today = startOfLocalDay(now, TIME_ZONE);
+    const yesterday = startOfLocalDay(today - 1, TIME_ZONE);
+    if (entry.gasDay === yesterday) {
+      return;
+    }
+    let results;
+    try {
+      results = await this.readConsumption(entry, yesterday, today);
+    } catch (err) {
+      if (err.code === 'rate_limited') {
+        throw err;
+      }
+      this.logger.warn(`Consumption of ${entry.name} unavailable: ${err.message}`);
+      return;
+    }
+    const intervals = consumptionIntervals(results, {
+      now,
+      gasM3: this.config.gasUnit === 'm3',
+      calorificValue: this.config.gasCalorificValue,
+    });
+    const kwh = dayTotal(intervals, yesterday, today);
+    if (kwh === null) {
+      return;
+    }
+    await this.gladys
+      .publishChangedStates(gasYesterdayStates(entry.external, kwh), { heartbeat: DAY })
+      .then(() => {
+        entry.gasDay = yesterday;
+      })
+      .catch((err) => this.logger.warn(`Gas use of ${entry.name} failed: ${err.message}`));
+  }
+
   /** A device was created: a meter starts its 14-day backfill right away. */
   async onDeviceCreated(device) {
     const id = device?.external_id;
@@ -686,6 +728,7 @@ export class OctopusApp {
     const entry = [...this.meters.values()].find((e) => e.external.device === id);
     if (entry) {
       entry.backfilledOn = undefined;
+      entry.gasDay = undefined;
       await this.run(this.generation, () => this.consume(entry));
     }
   }
@@ -761,7 +804,12 @@ export class OctopusApp {
 
   /** The meter a contract refers to: its `meter_point` input, else the first of its fuel. */
   contractMeter(contract) {
-    const kind = contract?.template_key === CONTRACT_TEMPLATES.GAS ? KIND.GAS : KIND.ELECTRICITY;
+    if (contract?.template_key !== CONTRACT_TEMPLATES.ELECTRICITY) {
+      // The gas template was withdrawn after 0.1.2: the core refuses gas contracts,
+      // and a contract left from it would price electricity at the gas rate.
+      throw new Error(`Octopus contract template ${contract?.template_key} is not supported`);
+    }
+    const kind = KIND.ELECTRICITY;
     const wanted = String(contract?.inputs?.meter_point ?? '').replace(/\s+/g, '');
     const entry = wanted
       ? this.meters.get(`${kind}:${wanted}`)

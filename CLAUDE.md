@@ -63,8 +63,11 @@ test/                             node --test, against the SDK's fake Gladys (in
 
 - **Octopus keys are forever too**: the external ids `agile:<region>`,
   `electricity:<MPAN>`, `gas:<MPRN>`, the `FEATURE` keys of `src/devices.js`,
-  the manifest keys of `src/constants.js` and the contract template keys
-  `octopus-gb-electricity` / `octopus-gb-gas`.
+  the manifest keys of `src/constants.js` and the contract template key
+  `octopus-gb-electricity` (`octopus-gb-gas`, withdrawn, is never reused).
+- **Gas never enters the energy monitoring** while the core refuses gas
+  contracts: no `energy-sensor` feature and no `publishEnergyConsumption` for
+  `gas:<MPRN>` (the core would count it as electricity), see TODO.md.
 - **Be polite with Octopus**: account every 6 h, consumption and tariffs every
   hour, tomorrow's Agile prices every 15 min only after 16:00 UK time and only
   until published. Never send the API key to the public endpoints.

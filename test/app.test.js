@@ -151,8 +151,14 @@ test('start discovers the meters and the Agile region of the tariff, and publish
   assert.equal(timers.pending.size, 0);
 });
 
-test('the consumption backfills 14 days once the devices exist, gas m³ in kWh', async () => {
-  const { app, gladys } = setup({ devices: [consumptionDevice(ELEC), consumptionDevice(GAS)] });
+const gasDevice = () => ({
+  external_id: GAS,
+  name: 'gas',
+  features: [{ external_id: `${GAS}:gas_yesterday_kwh`, category: 'unknown', type: 'unknown' }],
+});
+
+test('the electricity backfills 14 days; gas stays out of the energy monitoring', async () => {
+  const { app, gladys } = setup({ devices: [consumptionDevice(ELEC), gasDevice()] });
   await gladys.connect();
   await app.start(CONFIG);
   const reads = fake.calls.filter((c) => c.name === 'consumption');
@@ -161,10 +167,24 @@ test('the consumption backfills 14 days once the devices exist, gas m³ in kWh',
     'the newest meter of the point',
   );
   const elec = gladys.fake.energyConsumption[`${ELEC}:consumption`];
-  const gas = gladys.fake.energyConsumption[`${GAS}:consumption`];
   assert.ok(elec.length > 600, `14 days of half hours (${elec.length})`);
   assert.equal(elec[0].kwh, 0.2);
-  assert.equal(gas[0].kwh, 1.1363, '0.1 m³ at 40 MJ/m³');
+  // Gas: never publishEnergyConsumption (the core would price it as electricity).
+  assert.ok(
+    gladys.fake.publishedEnergyConsumption.every(
+      (p) => !p.device_feature_external_id.startsWith(GAS),
+    ),
+  );
+  const gasFeatures = gladys.fake.discoveredDevices.find((d) => d.external_id === GAS).features;
+  assert.ok(
+    gasFeatures.every((f) => f.category !== 'energy-sensor'),
+    'no gas feature the energy monitoring would pick up',
+  );
+  // Yesterday (15 October, UK day): 48 half hours of 0.1 m³ at 40 MJ/m³.
+  assert.equal(gladys.fake.lastState(`${GAS}:gas_yesterday_kwh`), 54.542);
+  const gasRead = reads.find((c) => c.path.includes(GAS_SERIAL));
+  assert.equal(gasRead.query.period_from, '2026-10-14T23:00:00Z');
+  assert.equal(gasRead.query.period_to, '2026-10-15T23:00:00Z');
   // The next run only reads 3 days back.
   fake.calls.length = 0;
   await app.refreshConsumption();
@@ -479,14 +499,14 @@ test('the delegated contracts price each half hour at the tariff in force', asyn
   });
   assert.equal(current.data.price, pence('2026-10-16T10:30:00Z'));
   assert.equal(current.data.valid_until, '2026-10-16T11:00:00.000Z');
+  // The withdrawn gas template is refused: never electricity priced at the gas rate.
   const gas = await gladys.fake.energyCurrent({
     contract: { ...contract, template_key: 'octopus-gb-gas', inputs: { meter_point: MPRN } },
     billing_period: {},
     cumulative: {},
     max_power_kw: 0,
   });
-  assert.equal(gas.data.price, 0.0609);
-  assert.equal(gas.data.valid_until, undefined, 'a rate still in force');
+  assert.equal(gas.success, false);
 });
 
 test('the test button lists the meters and the Agile price', async () => {

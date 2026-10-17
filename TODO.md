@@ -5,7 +5,8 @@
 - [ ] Test on a real Gladys 5.2+ with a real Octopus UK account: discovery,
       the consumption backfill once the devices are created, the tariff
       features, the Agile device and its triggers over a day (tomorrow at
-      16:00), an electricity and a gas contract priced, the widget.
+      16:00), an electricity contract priced, the widget, the gas device
+      updated from Discovery (the old consumption feature gone).
 - [ ] Turn on "Private vulnerability reporting" (SECURITY.md points there).
 - [ ] Add the `gladys-assistant-integration` topic to publish in the store
       (after the first release: the store validator needs the GHCR image).
@@ -22,9 +23,10 @@
 - [ ] `gladys.devices` holds the created devices at start (refreshed on each
       connection), so a created meter is read without waiting for
       `onDeviceCreated`.
-- [ ] A gas consumption feature (`energy-sensor` / `thirty-minutes-consumption`)
-      becomes its own root meter once a gas contract is attached, and is not
-      shown under the main electricity meter before that.
+- [ ] "Update" in Discovery removes the old gas `consumption` feature (and
+      its derived `_cost` feature) from a device created with 0.1.2 or older.
+- [ ] The `unknown` / `unknown` "Gas used yesterday (kWh)" feature shows its
+      value and history on a dashboard.
 - [ ] SMETS1 / SMETS2 detection: the REST API does not say which unit a gas
       meter reports, hence the `gas_unit` option (BottlecapDave reads it from
       GraphQL).
@@ -71,6 +73,16 @@
   meter of the point is asked and the one with the latest reading is kept
   (the order of `meters[]` means nothing); the choice is reset when the list
   of serials changes.
+- **Gas is out of the energy monitoring (after 0.1.2).** The core refuses gas
+  contracts in contracts v1 and attaches every consumption feature
+  (`energy-sensor` consumption or index, `energy` included) to the main
+  electric meter, priced at the electricity rate: 0.1.2 and older counted the
+  gas as electricity. A gas device now carries no `energy-sensor` feature,
+  only "Gas used yesterday (kWh)" (`gas_yesterday_kwh`, `unknown` /
+  `unknown`: no core category takes kWh without being an energy source),
+  published once the UK day is complete, plus its unit rate and standing
+  charge. The `octopus-gb-gas` template is withdrawn (a contract from it
+  would price electricity at the gas rate); its key is never reused.
 - **The account number is a `secret` field** (personal data), like the key.
 - **Negative Agile prices** cost zero in the delegated contracts (core costs
   are ≥ 0); the "negative price" trigger and sensor show them.
@@ -93,3 +105,7 @@
   (`obtainKrakenToken` with the API key).
 - Intelligent Octopus dispatches and saving sessions (GraphQL).
 - Germany and Italy (Kraken GraphQL), see Decisions.
+- Gas in the energy monitoring once the core handles gas contracts (a gas
+  meter as its own root, priced by a gas contract): a 30-minute gas
+  consumption fed with `publishEnergyConsumption` again, and a gas template
+  under a new key.

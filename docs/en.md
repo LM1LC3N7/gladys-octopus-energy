@@ -2,8 +2,9 @@
 
 **Unofficial connector, not affiliated with Octopus Energy.** It brings your
 Octopus Energy account (Great Britain) into Gladys: your electricity and gas
-meters, their half-hourly consumption in the Gladys energy monitoring, your
-current unit rate and standing charge, and the public **Agile** prices with
+meters, the half-hourly electricity consumption in the Gladys energy
+monitoring, yesterday's gas use, your current unit rates and standing
+charges, and the public **Agile** prices with
 "cheapest hours" scene triggers. Octopus Energy is a trademark of Octopus
 Energy Group. For Octopus Energy **France**, use the Octopus Energy France
 integration instead: this one only talks to the British API.
@@ -13,12 +14,12 @@ integration instead: this one only talks to the British API.
 | Surface                                           | Content                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | One device per **electricity** meter point (MPAN) | the 30-minute consumption for the energy monitoring, the unit rate now (£/kWh, VAT included) and the standing charge (£/day)                                            |
-| One device per **gas** meter point (MPRN)         | the same, the gas consumption converted to kWh                                                                                                                          |
+| One device per **gas** meter point (MPRN)         | the gas used yesterday in kWh (a plain sensor, **not** in the energy monitoring: see below), the unit rate now and the standing charge                                  |
 | One **Agile region** device                       | Agile price now, next price, today's average, minimum and maximum, a "cheap period" sensor and a "negative price" sensor                                                |
 | Scene triggers                                    | **cheap period started / ended** (the N cheapest hours of the day), **negative price started** (plunge pricing), **tomorrow's prices published** (around 16:00 UK time) |
 | Scene actions                                     | **price now** and **cheapest hours** (the N cheapest consecutive hours of the next 24 hours, of today or of tomorrow)                                                   |
 | Widget                                            | **Octopus prices**: now, next, averages, cheapest hours, negative prices, price curve of today and tomorrow                                                             |
-| Energy contracts (Gladys 5.2+)                    | **Octopus Energy electricity** and **gas** templates: each half hour priced at the unit rate of your tariff at that time, plus the standing charge                      |
+| Energy contract (Gladys 5.2+)                     | **Octopus Energy electricity** template: each half hour priced at the unit rate of your tariff at that time, plus the standing charge                                   |
 
 ## Installation
 
@@ -43,24 +44,33 @@ With an account, "Automatic" takes the region of your electricity tariff.
 Smart meter readings reach Octopus with a delay (often the next day). The
 integration therefore publishes **dated** half hours: each reading lands in
 its own half hour of the energy monitoring, even when it arrives a day late.
-Only the meters whose device you created are read. When a meter device is
-added, the last 14 days are filled in right away; then the last 3 days are
-read every hour, and the 14 days again once a day (after 04:00 UK time) for
-the readings Octopus fills in late. Gas read in cubic metres (SMETS2) is
+Only the meters whose device you created are read. When an electricity meter
+device is added, the last 14 days are filled in right away; then the last 3
+days are read every hour, and the 14 days again once a day (after 04:00 UK
+time) for the readings Octopus fills in late.
+
+**Gas is not in the energy tab** as long as the Gladys core does not handle
+gas contracts: the core would add any gas consumption to the main
+electricity meter and price it at the electricity rate. The gas device
+therefore only shows **Gas used yesterday (kWh)**, once the whole day is
+known, plus its unit rate and standing charge; it changes nothing in your
+energy monitoring or your costs. Gas read in cubic metres (SMETS2) is
 converted to kWh with the calorific value of the configuration (×1.02264 ÷
 3.6); choose kWh for a SMETS1 gas meter. **After a gas meter change** (new
 serial), check **Unit of the gas meter readings** again: a SMETS1 meter
 replaced by a SMETS2 one switches from kWh to cubic metres.
 
-To see the costs, create a contract in **Energy monitoring → Contracts**:
+**Already using version 0.1.2 or older with a gas device?** Its old
+"Consumption (30 min)" feature was counted as electricity. Open
+**Integrations → Octopus Energy → Discovery** and click **Update** on the gas
+device: the old feature is replaced by "Gas used yesterday (kWh)". Until you
+do, Gladys keeps the old feature (it receives nothing new). Delete any
+contract you created from the former **Octopus Energy gas** template: it is
+no longer offered and no longer priced.
 
-- from the **Octopus Energy electricity** template, attached to the
-  **electricity** meter device;
-- from the **Octopus Energy gas** template, attached to the **gas** meter
-  device (never to the electricity one: the gas costs would be mixed with the
-  electricity costs).
-
-Enter the standing charge shown by the device. Gladys then asks the
+To see the electricity costs, create a contract in **Energy monitoring →
+Contracts** from the **Octopus Energy electricity** template, attached to the
+**electricity** meter device. Enter the standing charge shown by the device. Gladys then asks the
 integration to price each half hour from your own tariff history, tariff
 changes included; a half hour outside every agreement of the account (just
 before your first one, for example) takes the nearest agreement.

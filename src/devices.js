@@ -29,6 +29,7 @@ export const FEATURE = {
   NEGATIVE: 'negative_price',
   // Meters
   CONSUMPTION: 'consumption',
+  GAS_YESTERDAY: 'gas_yesterday_kwh',
   UNIT_RATE: 'unit_rate',
   STANDING_CHARGE: 'standing_charge',
 };
@@ -86,7 +87,16 @@ export function buildAgileDevice(gladys, { region, product }) {
   };
 }
 
-/** The device of an electricity or gas meter point of the account. */
+/**
+ * The device of an electricity or gas meter point of the account.
+ *
+ * Gas stays OUT of the energy monitoring: the core prices every consumption
+ * feature (`energy-sensor` consumption or index, `energy` included) as
+ * electricity under the main electric meter, and refuses gas contracts in
+ * contracts v1. A gas meter only carries yesterday's use in kWh, as a plain
+ * sensor (`unknown`: no core category takes kWh without being an energy
+ * source), and its tariff.
+ */
 export function buildMeterDevice(gladys, meter) {
   const external = ids(gladys, meter.kind, meter.point);
   const gas = meter.kind === KIND.GAS;
@@ -94,14 +104,25 @@ export function buildMeterDevice(gladys, meter) {
     name: `Octopus ${gas ? 'gas' : 'electricity'} (${gas ? 'MPRN' : 'MPAN'} …${meter.point.slice(-4)})`,
     external_id: external.device,
     features: [
-      feature(
-        external,
-        FEATURE.CONSUMPTION,
-        'Consumption (30 min)',
-        C.ENERGY_SENSOR,
-        T.ENERGY_SENSOR.THIRTY_MINUTES_CONSUMPTION,
-        { unit: U.KILOWATT_HOUR, max: 1000 },
-      ),
+      gas
+        ? feature(
+            external,
+            FEATURE.GAS_YESTERDAY,
+            'Gas used yesterday (kWh)',
+            C.UNKNOWN,
+            T.UNKNOWN.UNKNOWN,
+            {
+              max: 10000,
+            },
+          )
+        : feature(
+            external,
+            FEATURE.CONSUMPTION,
+            'Consumption (30 min)',
+            C.ENERGY_SENSOR,
+            T.ENERGY_SENSOR.THIRTY_MINUTES_CONSUMPTION,
+            { unit: U.KILOWATT_HOUR, max: 1000 },
+          ),
       money(external, FEATURE.UNIT_RATE, 'Unit rate per kWh'),
       money(external, FEATURE.STANDING_CHARGE, 'Standing charge per day', { min: 0, max: 100 }),
     ],
@@ -138,6 +159,9 @@ export function agileStates(external, price) {
     ...state(external, FEATURE.NEGATIVE, price.negative ? 1 : 0),
   ];
 }
+
+/** The state of the gas used yesterday (kWh), a plain sensor outside the energy monitoring. */
+export const gasYesterdayStates = (external, kwh) => state(external, FEATURE.GAS_YESTERDAY, kwh);
 
 /** The states of a meter's tariff: the unit rate now, the standing charge today. */
 export function tariffStates(external, { rate, standingCharge }) {

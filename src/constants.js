@@ -80,7 +80,8 @@ export const SCENE_TRIGGERS = {
   TOMORROW: 'tomorrow_prices_published',
 };
 export const WIDGETS = { PRICES: 'prices' };
+// The gas template (`octopus-gb-gas`) was withdrawn after 0.1.2: the core refuses
+// gas contracts (contracts v1). Never reuse that key for something else.
 export const CONTRACT_TEMPLATES = {
   ELECTRICITY: 'octopus-gb-electricity',
-  GAS: 'octopus-gb-gas',
 };

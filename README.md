@@ -2,9 +2,11 @@
 
 [Gladys Assistant](https://gladysassistant.com) external integration for
 **Octopus Energy (Great Britain)**: electricity and gas meters, half-hourly
-consumption for the energy monitoring, current unit rate and standing charge,
-public Agile prices with cheap-hours and negative-price scene triggers, a
-dashboard widget and delegated energy contracts. **Unofficial, not affiliated
+electricity consumption for the energy monitoring, yesterday's gas use (kept
+out of the energy monitoring until the core handles gas contracts), current
+unit rates and standing charges, public Agile prices with cheap-hours and
+negative-price scene triggers, a dashboard widget and a delegated electricity
+contract. **Unofficial, not affiliated
 with Octopus Energy.** Octopus Energy France is out of scope (see the Octopus
 Energy France integration). **Germany and Italy are not covered in this
 version** (Kraken GraphQL with an e-mail and password login, see TODO.md).
@@ -32,9 +34,11 @@ Gladys ⇄ SDK ⇄ src/app.js (OctopusApp)
   CloudFront 403 is a passing error.
 - **Consumption** (`/…-meter-points/<point>/meters/<serial>/consumption/`)
   every hour for the created devices only, 3 days back; 14 days at the
-  creation of the device and once a day after 04:00 UK time. Published dated
-  with `publishEnergyConsumption`. The meter of the point with the latest
-  reading is used; another one is tried when it has nothing.
+  creation of the device and once a day after 04:00 UK time. Electricity is
+  published dated with `publishEnergyConsumption`; gas never is (the core
+  would count it as electricity): only yesterday's total, once complete, as a
+  plain `unknown` sensor. The meter of the point with the latest reading is
+  used; another one is tried when it has nothing.
 - **Tariffs and Agile prices** (public `standard-unit-rates` and
   `standing-charges` of the tariff code) every hour, up to the real end of
   tomorrow (23- and 25-hour days included); the Agile prices again at 16:02 UK
