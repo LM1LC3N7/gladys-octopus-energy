@@ -1,6 +1,6 @@
 {
   "name": "gladys-octopus-energy",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Octopus Energy (Great Britain) for Gladys Assistant: electricity and gas meters, half-hourly consumption for the energy monitoring, current tariff, public Agile prices with cheap-hours scene triggers, a widget and delegated energy contracts.",
   "type": "module",
