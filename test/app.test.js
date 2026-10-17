@@ -75,6 +75,7 @@ function setup({ config = CONFIG, routes = {}, now = NOW, devices = [] } = {}) {
   const app = new OctopusApp({ gladys, logger: quiet, now: () => clock.now, timers });
   gladys.onScanRequest(() => app.discover());
   gladys.onDeviceCreated((device) => app.onDeviceCreated(device));
+  gladys.onDeviceUpdated((device) => app.onDeviceUpdated(device));
   gladys.onSceneAction(SCENE_ACTIONS.GET_PRICE, (f) => app.getPrice(f));
   gladys.onSceneAction(SCENE_ACTIONS.CHEAPEST_WINDOW, (f) => app.getCheapestWindow(f));
   for (const key of Object.values(WIDGETS)) {
@@ -190,6 +191,31 @@ test('the electricity backfills 14 days; gas stays out of the energy monitoring'
   await app.refreshConsumption();
   const next = fake.calls.find((c) => c.path.includes(SERIAL));
   assert.equal(next.query.period_from, '2026-10-13T10:30:00Z');
+});
+
+test('a gas device of 0.1.2 is read only once updated from Discovery', async () => {
+  // Created with 0.1.2: the old consumption feature, no gas_yesterday_kwh yet.
+  const old = consumptionDevice(GAS);
+  const { app, gladys } = setup({ devices: [old] });
+  await gladys.connect();
+  await app.start(CONFIG);
+  await app.refreshConsumption();
+  assert.ok(!fake.calls.some((c) => c.path.includes(GAS_SERIAL)), 'nothing read for it');
+  assert.equal(gladys.fake.lastState(`${GAS}:gas_yesterday_kwh`), undefined);
+  // "Update" in Discovery: the device now carries the new feature.
+  const updated = gasDevice();
+  gladys.fake.devices.splice(gladys.fake.devices.indexOf(old), 1, updated);
+  await gladys.fake.deviceUpdated(updated);
+  assert.ok(
+    fake.calls.some((c) => c.path.includes(GAS_SERIAL)),
+    'read at once',
+  );
+  assert.equal(gladys.fake.lastState(`${GAS}:gas_yesterday_kwh`), 54.542);
+  assert.ok(
+    gladys.fake.publishedEnergyConsumption.every(
+      (p) => !p.device_feature_external_id.startsWith(GAS),
+    ),
+  );
 });
 
 test('without the devices Octopus is not read; creating one starts its backfill', async () => {

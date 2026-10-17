@@ -66,7 +66,8 @@ replaced by a SMETS2 one switches from kWh to cubic metres.
 device: the old feature is replaced by "Gas used yesterday (kWh)". Until you
 do, Gladys keeps the old feature (it receives nothing new). Delete any
 contract you created from the former **Octopus Energy gas** template: it is
-no longer offered and no longer priced.
+no longer offered and no longer priced. **If the gas still shows in the energy
+tab** after that, delete the gas device, then add it again from Discovery.
 
 To see the electricity costs, create a contract in **Energy monitoring →
 Contracts** from the **Octopus Energy electricity** template, attached to the

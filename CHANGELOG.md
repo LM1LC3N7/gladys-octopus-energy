@@ -17,7 +17,9 @@ the notes of the version's GitHub Release.
   rate (the Gladys core does not handle gas contracts yet). The gas device
   now stays out of the energy monitoring and shows "Gas used yesterday
   (kWh)" with its unit rate and standing charge. **Existing gas devices
-  change only after "Update" in the integration's Discovery tab.**
+  change only after "Update" in the integration's Discovery tab**, which
+  reads the gas at once; if the gas still shows in the energy tab, delete
+  the gas device and add it again from Discovery.
 
 ### Removed
 

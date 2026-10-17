@@ -92,7 +92,7 @@ export class OctopusApp {
     this.agile = null;
     this.products = { list: [], at: 0 };
     /** Devices created since the last connection (gladys.devices is refreshed on reconnection). */
-    this.createdIds = new Set();
+    this.createdDevices = new Map();
     this.timerIds = [];
     this.tickTimer = undefined;
     this.tomorrowTimer = undefined;
@@ -576,10 +576,17 @@ export class OctopusApp {
 
   // --- Consumption -------------------------------------------------------------------
 
+  /** The created Gladys device of a meter (the latest one Gladys sent), or undefined. */
+  createdDevice(entry) {
+    const id = entry.external.device;
+    return (
+      this.createdDevices.get(id) ?? (this.gladys.devices ?? []).find((d) => d.external_id === id)
+    );
+  }
+
   /** Whether the user created the device of a meter (no need to read Octopus otherwise). */
   isCreated(entry) {
-    const id = entry.external.device;
-    return this.createdIds.has(id) || (this.gladys.devices ?? []).some((d) => d.external_id === id);
+    return Boolean(this.createdDevice(entry));
   }
 
   /**
@@ -691,6 +698,12 @@ export class OctopusApp {
     if (entry.gasDay === yesterday) {
       return;
     }
+    // A gas device created with 0.1.2 or older still has the old consumption
+    // feature until "Update" in Discovery: nothing to publish to until then.
+    const featureId = entry.external.feature(FEATURE.GAS_YESTERDAY);
+    if (!(this.createdDevice(entry)?.features ?? []).some((f) => f.external_id === featureId)) {
+      return;
+    }
     let results;
     try {
       results = await this.readConsumption(entry, yesterday, today);
@@ -718,13 +731,17 @@ export class OctopusApp {
       .catch((err) => this.logger.warn(`Gas use of ${entry.name} failed: ${err.message}`));
   }
 
-  /** A device was created: a meter starts its 14-day backfill right away. */
+  /**
+   * A device was created, or updated from Discovery (a gas device of 0.1.2
+   * or older gets its new feature): a meter is read right away, the
+   * electricity 14 days back, the gas for yesterday.
+   */
   async onDeviceCreated(device) {
     const id = device?.external_id;
     if (!id) {
       return;
     }
-    this.createdIds.add(id);
+    this.createdDevices.set(id, device);
     const entry = [...this.meters.values()].find((e) => e.external.device === id);
     if (entry) {
       entry.backfilledOn = undefined;
@@ -733,8 +750,12 @@ export class OctopusApp {
     }
   }
 
+  onDeviceUpdated(device) {
+    return this.onDeviceCreated(device);
+  }
+
   onDeviceDeleted(device) {
-    this.createdIds.delete(device?.external_id);
+    this.createdDevices.delete(device?.external_id);
   }
 
   // --- Scene actions -------------------------------------------------------------------

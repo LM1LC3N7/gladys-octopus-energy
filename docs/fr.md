@@ -70,7 +70,9 @@ cliquez sur **Mettre à jour** sur l'appareil gaz : l'ancienne fonctionnalité
 est remplacée par « Gas used yesterday (kWh) ». Tant que vous ne le faites
 pas, Gladys garde l'ancienne fonctionnalité (qui ne reçoit plus rien).
 Supprimez aussi tout contrat créé depuis l'ancien modèle **Octopus Energy
-gaz** : il n'est plus proposé ni tarifé.
+gaz** : il n'est plus proposé ni tarifé. **Si le gaz apparaît encore dans
+l'onglet énergie**, supprimez l'appareil gaz puis rajoutez-le depuis la
+Découverte.
 
 Pour voir les coûts de l'électricité, créez un contrat dans **Suivi de
 l'énergie → Contrats** depuis le modèle **Octopus Energy électricité**,
