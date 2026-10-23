@@ -6,8 +6,8 @@
     "en": "Unofficial: Octopus Energy UK meters, half-hourly use, tariffs and public Agile prices.",
     "fr": "Non officiel : compteurs Octopus Energy UK, conso par demi-heure, tarifs et prix Agile publics."
   },
-  "version": "0.1.3",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-octopus-energy:0.1.3",
+  "version": "0.1.4",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-octopus-energy:0.1.4",
   "gladys_version": ">=5.2.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-octopus-energy/main/cover.png",
   "categories": ["energy"],
