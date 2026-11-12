@@ -2,7 +2,7 @@
 
 ## Before announcing
 
-- [ ] Test on a real Gladys 5.2+ with a real Octopus UK account: discovery,
+- [ ] Test on a real Gladys 5.3+ with a real Octopus UK account: discovery,
       the consumption backfill once the devices are created, the tariff
       features, the Agile device and its triggers over a day (tomorrow at
       16:00), an electricity contract priced, the widget, the gas device
